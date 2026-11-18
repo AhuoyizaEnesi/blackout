@@ -4,30 +4,45 @@
 
 | ID | Feature / risk | Test type | Expected result | Phase | Status |
 |---|---|---|---|---|---|
-| T01 | Pure engine determininism | Unit | Identical input => identical transition | H/M | NOT RUN |
-| T02 | Action prerequisites | Unit | Invalid action yields no effects | E/H/M | NOT RUN |
-| T03 | Role busy | Unit/integration | Concurrent same-role action rejected | H/I/M | NOT RUN |
-| T04 | Timed event ordering | Unit | Fixed ordering at same timestamp | H/M | NOT RUN |
-| T05 | Deadline equality | Unit | Exact-deadline completion before ending | H/M | NOT RUN |
-| T06 | Four outcomes reachable | Scenario simulation | Reproducible traces each outcome | E/H/M | NOT RUN |
-| T07 | Outcome partition exhaustive | Property-based | Every terminal state maps to one ending | E/H/M | NOT RUN |
-| T08 | Score | Unit | Exact 0..100 scoring and evidence credit | E/H/M | NOT RUN |
-| T09 | Anonymous mutation | Integration | Denied | G/I/L/M | NOT RUN |
-| T10 | Forged role | Integration | Denied server-side | G/I/L/M | NOT RUN |
-| T11 | Hidden answer leakage | Network/security | Noneligible client sees no private flags | G/L/M | NOT RUN |
-| T12 | Create/join/capacity | E2E | Correct lobby and errors | I/J/M | NOT RUN |
-| T13 | Simultaneous role claim | Integration | Exactly one claimant succeeds | I/L/M | NOT RUN |
-| T14 | Duplicate command | Integration | Effect exactly once | I/L/M | NOT RUN |
-| T15 | Conflicting commands | Integration | No lost update or contradictory history | I/L/M | NOT RUN |
-| T16 | Commander approval | E2E | Scoped valid approval only | I/J/M | NOT RUN |
-| T17 | Two-user synchronization | E2E | Both observe identical committed events | I/M | NOT RUN |
-| T18 | Solo golden path | E2E | Complete run/report | J/M/O | NOT RUN |
-| T19 | Reconnect and refresh | E2E | State/role/timer recovered | I/L/M | NOT RUN |
-| T20 | Duplicate tab | E2E | No duplicate participant or action | I/M | NOT RUN |
-| T21 | Long offline/hydration | Integration | Overdue events processed once | L/M | NOT RUN |
+| T01 | Pure engine determininism | Unit | Identical input => identical transition | H/M | PASS (unit, 2026-11-17: replay, lazy-vs-eager, seeded random play) |
+| T02 | Action prerequisites | Unit | Invalid action yields no effects | E/H/M | PASS (unit; also refused by the real local worker) |
+| T03 | Role busy | Unit/integration | Concurrent same-role action rejected | H/I/M | PASS (unit + local worker; solo, and per participant in a team 2026-11-18) |
+| T04 | Timed event ordering | Unit | Fixed ordering at same timestamp | H/M | PASS (unit) |
+| T05 | Deadline equality | Unit | Exact-deadline completion before ending | H/M | PASS (unit) |
+| T06 | Four outcomes reachable | Scenario simulation | Reproducible traces each outcome | E/H/M | PASS (2026-11-18, rules v2: 8 scripted strategies and 7 best/worst plays in unit tests; Complete Recovery and Escalation also played on the local worker) |
+| T07 | Outcome partition exhaustive | Property-based | Every terminal state maps to one ending | E/H/M | PASS (2026-11-18, rules v2: 256-row truth table, 400 random plays, 1,500 planned plays) |
+| T08 | Score | Unit | Exact 0..100 scoring and evidence credit | E/H/M | PASS (2026-11-18, rules v2: exact breakdown, trust table, 100 reachable, score bands disjoint) |
+| T09 | Anonymous mutation | Integration | Denied | G/I/L/M | PASS (local worker: 401 without or with a forged token) |
+| T10 | Forged role | Integration | Denied server-side | G/I/L/M | PASS (2026-11-18, unit + local worker: role, user id and membership in the request body ignored; each participant refused the other roles' actions; host has no extra rights) |
+| T11 | Hidden answer leakage | Network/security | Noneligible client sees no private flags | G/L/M | PASS locally (2026-11-18: a participant's private finding never reached the other participants' sockets or sync until shared; a non-member's socket received nothing of the room; narrative absent from client bundle). Not yet on a deployed app |
+| T12 | Create/join/capacity | E2E | Correct lobby and errors | I/J/M | PASS (2026-11-18, unit + local worker + page: create, join by code, wrong code, fourth person refused, leave, abandon) |
+| T13 | Simultaneous role claim | Integration | Exactly one claimant succeeds | I/L/M | PASS (2026-11-18, unit over 40 interleavings + local worker: three accounts claiming one role at once, exactly one holder) |
+| T14 | Duplicate command | Integration | Effect exactly once | I/L/M | PASS (unit + local worker; solo and team: repeated command ids replay, for actions, requests, decisions and room creation) 2026-11-18 13:20: a command whose answer was lost is retried from the page with the same id — one event. |
+| T15 | Conflicting commands | Integration | No lost update or contradictory history | I/L/M | PASS (unit + local worker; solo and team: three accounts acting at once, approve and deny at once, one event per log position) |
+| T16 | Commander approval | E2E | Scoped valid approval only | I/J/M | PASS (2026-11-18, unit + local worker + page: only the commander decides; decision must name the pending request and operation; forged, stale, repeated and cross-room decisions refused) |
+| T17 | Two-user synchronization | E2E | Both observe identical committed events | I/M | PASS (2026-11-18, local worker: three participants read identical logs; pages update live for lobby, actions, approvals and shared findings) |
+| T18 | Solo golden path | E2E | Complete run/report | J/M/O | PARTIAL (complete run to outcome and score through the page on the local worker; no report/postmortem yet; not on deployed app) |
+| T19 | Reconnect and refresh | E2E | State/role/timer recovered | I/L/M | PASS (local worker; solo, and team 2026-11-18: refresh during an action, commander leaves and returns with a request pending, role and state recovered) 2026-11-18 13:20: also offline and back, lost answer, ended session, and delayed live updates on the solo page (`tests/hardening.spec.ts`). |
+| T20 | Duplicate tab | E2E | No duplicate participant or action | I/M | PASS (2026-11-18, unit + local worker + page: second tab is the same participant; same button in two tabs gives one action; two tabs claiming different roles leave one role) |
+| T21 | Long offline/hydration | Integration | Overdue events processed once | L/M | PASS (unit; and in real time on the local worker, 2026-11-17) 2026-11-18 13:20: also across a server restart, with no request prompting it. |
 | T22 | AI unavailable | Unit/E2E | Template report still renders | K/M | NOT RUN |
 | T23 | Responsive + keyboard | Browser/manual | No critical clipping; visible focus | J/N | NOT RUN |
 | T24 | Reduced motion | Browser/manual | Animations respect preference | N | NOT RUN |
 | T25 | Production room flow | Live smoke | Create/join/action/report works on app.space | O | NOT RUN |
 | T26 | Production authorization | Live smoke | Invalid/unauthorized attempts denied | O | NOT RUN |
 | T27 | Secrets/attribution/source | Manual audit | Repo safe, owner author, correct source | O | NOT RUN |
+| T28 | Rules version | Unit/integration | New runs stamped; other versions refused, never replayed; rule change without bump fails | G/H/M | PASS (2026-11-18: unit; and on the local worker against real pre-versioning rows) |
+| T29 | Score matches ending | Unit/property | No play of a worse ending outscores a better one; 100 only by the intended play | E/H/M | PASS (2026-11-18: unit) |
+| T30 | Cross-room isolation | Integration | Members of one room cannot read, command or approve in another | G/I/L/M | PASS (2026-11-18, unit + local worker: two started rooms sharing two people) |
+| T31 | Sharing a finding | Integration/E2E | Only the owner can share; server copies the text; shared once | I/J/M | PASS (2026-11-18, unit + local worker + page) |
+| T32 | Client writes to game data | Integration | Every direct realtime write to rooms, lobby log, events and findings denied | G/L/M | PASS (2026-11-18, local worker: forged room, membership, role, event and finding writes and a delete all refused; state unchanged) |
+| T33 | Membership locked after start | Unit/integration | No join, leave, role change or abandon once started | I/L/M | PASS (2026-11-18, unit + local worker) |
+| T34 | Unattended timing | Unit/integration | Incidents, completions and the deadline are recorded by the server with nobody connected, once, at the scheduled instant | L/M | PASS (2026-11-18: unit with injected clock incl. exact boundaries; local worker: incidents at 60 s solo and team, read by socket only; eight-minute deadline with every browser idle: PASS: 1 passed, 0 failed, exit 0 (8.4 min): with no action sent for eight minutes, the solo and the team log each held all nine scheduled events at their exact times, the room row read completed, and both results gave the deadline as the reason; the sweep that ran meanwhile reported completed 0, so the timer job did it) |
+| T35 | Server restart recovery | Integration | Timers resume and logs are intact after the server stops and starts | L/M | PASS (2026-11-18, local worker, two server lifetimes) |
+| T36 | Clock forgery | Integration | Times in a request are ignored; stored deadline and events cannot be rewritten | G/L/M | PASS (2026-11-18, local worker: forged body fields, direct socket writes denied) |
+| T37 | Lobby expiry and cleanup | Unit/integration | Idle lobby expires at 24 h, deleted 7 days after closing; started or finished rooms never deleted | L/M | PASS (2026-11-18: unit boundaries; local worker through the development-only clock shift; real cron task observed running) |
+| T38 | Abuse limits | Unit/integration | Room creation, simulation creation and code attempts bounded per account; replays free; other accounts unaffected | L/M | PASS (2026-11-18: unit incl. concurrent takers; local worker: exactly 120 rooms and 120 attempts answered, then refused, valid code refused once spent). Simulation limit: unit only |
+| T39 | Request bounds and validation | Integration | Oversized or non-object bodies and hostile ids refused before any action runs | L/M | PASS (2026-11-18, local worker: 413, 400, typed refusals, 404 for non-actions) |
+| T40 | Presence, scheduler and queue access | Integration | Presence only for a room's members; scheduler and queue closed to players | G/L/M | PASS (2026-11-18, local worker: 401/403/404; no socket opened for non-members or anonymous; leaver refused) |
+| T41 | Assistant tool routes | Integration | Same permissions as the socket: no reads of closed collections, no writes of game rows | G/L/M | PASS (2026-11-18, local worker, both routes, with a positive control) |
+| T42 | Connection and session failure states | E2E | Page states the problem, shows nothing unconfirmed as done, recovers | J/L/M | PASS (2026-11-18, local worker, solo page; ended session simulated by a 401 answer). Team page: same code path, not separately driven |
