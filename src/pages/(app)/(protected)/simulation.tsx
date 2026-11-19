@@ -1,41 +1,25 @@
 /**
- * Solo simulation — functional page, not the designed one.
+ * Solo simulation: start a run, or play one.
  *
- * Deliberately plain: the visual design is being developed separately. This
- * page proves the path end to end and nothing more.
- *
- * It never computes authoritative state. It reads the simulation row and its
- * event log over the realtime connection, folds them with the shared engine
- * reducer, and sends commands (ids only) to server actions. The countdown is
- * a display derived from server timestamps; the server decides when an action
- * is complete, when an incident fires and how the run ends.
+ * This page never computes authoritative state. It reads the simulation row
+ * and its event log over the realtime connection, folds them with the shared
+ * engine reducer, and sends commands (ids only) to server actions. The
+ * countdown is a display derived from server timestamps; the server decides
+ * when an action is complete, when an incident fires and how the run ends.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ArrowRight, RotateCcw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useQuery } from 'deepspace'
 import { Button } from '@/components/ui'
-import {
-  ACTIONS,
-  ACTION_IDS,
-  GAME_EVENT_TYPES,
-  OUTCOME_LABELS,
-  ROLES,
-  ROLE_LABELS,
-  RULES_VERSION,
-  finalResult,
-  isActionId,
-  isIncidentId,
-  nextDue,
-  reduce,
-  validateApprovalRequest,
-  validateExecute,
-  type ActionId,
-  type GameEvent,
-  type GameEventType,
-  type SimulationState,
-} from '@/game/engine'
+import { RULES_VERSION, finalResult, nextDue, reduce, type ActionId, type GameEvent } from '@/game/engine'
+import { CommandCenter, type PendingKind } from '@/components/game/CommandCenter'
+import { SoloRunList, isLegacyRun } from '@/components/game/RunLists'
+import { toGameEvents } from '@/components/game/rows'
 import { ConnectionNotice } from '@/components/ConnectionNotice'
+import { Page, PageHeader, StateMessage } from '@/components/PageHeader'
 import { callGameAction, isUnanswered, linkProblem, newCommandId, type LinkProblem } from '@/lib/game-api'
 import type { SimulationEventRow, SimulationRow } from '@/schemas/simulation-schema'
 
@@ -43,65 +27,18 @@ interface ServerClock {
   serverNow: number
 }
 
-/** Why an available action cannot be run right now, in a few words. Display only: the server decides. */
-const BLOCKED_TEXT: Record<string, string> = {
-  prerequisite_missing: 'Not possible yet',
-  approval_required: 'Needs commander approval',
-  approval_denied: 'Approval denied',
-  role_busy: 'Role busy',
-  simulation_ended: 'Ended',
-}
-
-function eventText(event: GameEvent): string {
-  const action = event.actionId ? ACTIONS[event.actionId].label : ''
-  switch (event.type) {
-    case 'action_started':
-      return `${action} started`
-    case 'action_completed':
-      return `${action} completed`
-    case 'approval_requested':
-      return `Approval requested: ${action}`
-    case 'approval_granted':
-    case 'approval_auto_granted':
-      return `Approval granted: ${action}`
-    case 'approval_denied':
-      return `Approval denied: ${action}`
-    case 'incident':
-      return event.finding ?? 'Incident update'
-  }
-}
-
-/**
- * A run recorded under other rules (or before rules were versioned). Its log
- * only means something under the rules that wrote it, so it is never folded
- * or scored here; the server refuses it for the same reason.
- */
-function isLegacy(row: SimulationRow): boolean {
-  return row.rulesVersion !== RULES_VERSION
-}
-
-function formatClock(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000))
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
-}
-
 export default function SimulationPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const simulationId = searchParams.get('id')
 
-  return (
-    <div className="mx-auto max-w-2xl px-6 py-10 text-foreground">
-      <h1 className="text-2xl font-semibold">Operation Nightfall</h1>
-      {simulationId ? (
-        <SimulationView simulationId={simulationId} onLeave={() => setSearchParams({})} />
-      ) : (
-        <Lobby onOpen={(id) => setSearchParams({ id })} />
-      )}
-    </div>
+  return simulationId ? (
+    <SimulationView key={simulationId} simulationId={simulationId} onLeave={() => setSearchParams({})} />
+  ) : (
+    <Setup onOpen={(id) => setSearchParams({ id })} />
   )
 }
 
-function Lobby({ onOpen }: { onOpen: (id: string) => void }) {
+function Setup({ onOpen }: { onOpen: (id: string) => void }) {
   const { records, status } = useQuery<SimulationRow>('simulations', {
     orderBy: 'startedAt',
     orderDir: 'desc',
@@ -128,44 +65,70 @@ function Lobby({ onOpen }: { onOpen: (id: string) => void }) {
   }
 
   return (
-    <section className="mt-6 space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Solo run. The clock starts on the server the moment you create it.
-      </p>
-      <Button onClick={create} loading={pending} data-testid="create-simulation">
-        Start solo simulation
-      </Button>
-      {error && (
-        <p role="alert" className="text-sm text-destructive" data-testid="lobby-error">
-          {error}
-        </p>
-      )}
-      <div>
-        <h2 className="text-sm font-medium">Your simulations</h2>
-        {status === 'loading' && <p className="mt-2 text-sm text-muted-foreground">Loading…</p>}
-        {status === 'ready' && records.length === 0 && (
-          <p className="mt-2 text-sm text-muted-foreground">None yet.</p>
-        )}
-        <ul className="mt-2 space-y-1" data-testid="simulation-list">
-          {records.map((record) => (
-            <li key={record.recordId}>
-              <button
-                type="button"
-                className="text-sm underline"
-                onClick={() => onOpen(record.recordId)}
-              >
-                Started {new Date(record.data.startedAt).toLocaleString()}
-              </button>
-              {isLegacy(record.data) && (
-                <span className="ml-2 text-xs text-muted-foreground" data-testid="simulation-legacy-tag">
-                  earlier rules — cannot be opened
+    <Page>
+      <PageHeader
+        eyebrow="Operation Nightfall · Solo"
+        title="Run the incident alone"
+        lead="You play all three roles — Incident Commander, Security Engineer and Infrastructure Engineer — against the same eight-minute clock a team gets."
+      />
+      <div className="grid border-b border-border-strong lg:grid-cols-12">
+        <section aria-labelledby="start-heading" className="py-8 lg:col-span-5 lg:border-r lg:border-border lg:pr-10">
+          <h2 id="start-heading" className="kicker">
+            Before you start
+          </h2>
+          <ol className="mt-4 border-t border-border-strong">
+            {[
+              'The clock starts on the server the moment you press start, and it does not pause.',
+              'Each role can do one thing at a time, so you can run three actions in parallel.',
+              'Commander approvals are recorded automatically; they still take five seconds.',
+            ].map((rule, index) => (
+              <li key={rule} className="grid grid-cols-[2.75rem_minmax(0,1fr)] border-b border-border py-4">
+                <span className={cn('numeral pt-0.5 text-xl', index === 0 ? 'text-critical' : 'text-subtle')} aria-hidden>
+                  0{index + 1}
                 </span>
-              )}
-            </li>
-          ))}
-        </ul>
+                <span className="text-[15px] leading-relaxed text-foreground">{rule}</span>
+              </li>
+            ))}
+          </ol>
+          <Button className="mt-6 h-14 w-full justify-between px-5 text-base font-bold" size="lg" onClick={create} loading={pending} data-testid="create-simulation">
+            Start solo simulation <ArrowRight aria-hidden />
+          </Button>
+          {error && (
+            <p role="alert" className="mt-3 border-l-2 border-critical bg-critical-surface px-3 py-2 text-sm" data-testid="lobby-error">
+              {error}
+            </p>
+          )}
+          <p className="mt-5 text-sm text-muted-foreground">
+            Playing with two other people?{' '}
+            <Link to="/team" className="font-semibold text-foreground underline">
+              Create or join a team room
+            </Link>
+            .
+          </p>
+        </section>
+
+        <section aria-labelledby="runs-heading" className="min-w-0 border-t border-border py-8 lg:col-span-7 lg:border-t-0 lg:pl-10">
+          <h2 id="runs-heading" className="kicker mb-4">
+            Your solo runs
+          </h2>
+          <SoloRunList records={records} status={status} onOpen={onOpen} />
+        </section>
       </div>
-    </section>
+    </Page>
+  )
+}
+
+function Unavailable({ children, testId, onLeave }: { children: string; testId: string; onLeave: () => void }) {
+  return (
+    <Page narrow>
+      <PageHeader eyebrow="Operation Nightfall · Solo" title="This run cannot be shown" />
+      <div className="space-y-4 pt-6">
+        <StateMessage testId={testId}>{children}</StateMessage>
+        <Button variant="ghost" className="px-0 text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={onLeave}>
+          <ArrowLeft aria-hidden /> Back to your runs
+        </Button>
+      </div>
+    </Page>
   )
 }
 
@@ -177,7 +140,7 @@ function SimulationView({ simulationId, onLeave }: { simulationId: string; onLea
     orderDir: 'asc',
   })
   const simulation = simulations.records.find((record) => record.recordId === simulationId)
-  const legacy = simulation ? isLegacy(simulation.data) : false
+  const legacy = simulation ? isLegacyRun(simulation.data) : false
 
   // Server time = local time + offset, learned from every server response.
   const [clockOffset, setClockOffset] = useState<number | null>(null)
@@ -226,20 +189,7 @@ function SimulationView({ simulationId, onLeave }: { simulationId: string; onLea
   }, [])
 
   const events = useMemo<GameEvent[]>(() => {
-    const live: GameEvent[] = eventsQuery.records
-        .map((record) => record.data)
-        .filter((row) => GAME_EVENT_TYPES.includes(row.type as GameEventType))
-        .map((row) => ({
-          seq: row.seq,
-          type: row.type as GameEventType,
-          ...(isActionId(row.actionId) ? { actionId: row.actionId } : {}),
-          ...(isIncidentId(row.incidentId) ? { incidentId: row.incidentId } : {}),
-          at: row.at,
-          actorId: row.actorId ?? '',
-          commandId: row.commandId ?? '',
-          finding: row.finding || undefined,
-        }))
-        .sort((a, b) => a.seq - b.seq)
+    const live = toGameEvents(eventsQuery.records, true)
     // The log only grows, so whichever copy reaches further is the newer one.
     return (syncedEvents.at(-1)?.seq ?? 0) > (live.at(-1)?.seq ?? 0) ? syncedEvents : live
   }, [eventsQuery.records, syncedEvents])
@@ -301,35 +251,26 @@ function SimulationView({ simulationId, onLeave }: { simulationId: string; onLea
 
   if (simulations.status === 'loading' || eventsQuery.status === 'loading') {
     return (
-      <div className="mt-6 space-y-4">
-        <ConnectionNotice problem={problem} onRetry={() => void sync()} />
-        <p className="text-sm text-muted-foreground">Loading simulation…</p>
-      </div>
+      <Page>
+        <div className="space-y-4">
+          <ConnectionNotice problem={problem} onRetry={() => void sync()} />
+          <StateMessage>Loading simulation…</StateMessage>
+        </div>
+      </Page>
     )
   }
   if (simulation && legacy) {
     return (
-      <div className="mt-6 space-y-4">
-        <p className="text-sm text-muted-foreground" data-testid="simulation-legacy">
-          This run was recorded under an earlier version of the scenario rules. It cannot be replayed or scored
-          under the current rules, so it is not shown.
-        </p>
-        <Button variant="secondary" onClick={onLeave}>
-          Back
-        </Button>
-      </div>
+      <Unavailable testId="simulation-legacy" onLeave={onLeave}>
+        {`This run was recorded under an earlier version of the scenario rules (the current version is ${RULES_VERSION}). It cannot be replayed or scored under the current rules, so it is not shown.`}
+      </Unavailable>
     )
   }
   if (!simulation || !view) {
     return (
-      <div className="mt-6 space-y-4">
-        <p className="text-sm text-muted-foreground" data-testid="simulation-missing">
-          This simulation does not exist, or you are not a participant in it.
-        </p>
-        <Button variant="secondary" onClick={onLeave}>
-          Back
-        </Button>
-      </div>
+      <Unavailable testId="simulation-missing" onLeave={onLeave}>
+        This simulation does not exist, or you are not a participant in it.
+      </Unavailable>
     )
   }
 
@@ -337,170 +278,41 @@ function SimulationView({ simulationId, onLeave }: { simulationId: string; onLea
   const ended = result !== null || (serverNow !== null && serverNow >= view.deadlineAt)
   const remaining = serverNow === null ? null : view.deadlineAt - (result ? result.endedAt : serverNow)
   const clock = serverNow ?? view.lastEventAt
+  const isPending = (kind: PendingKind, key: string) =>
+    (kind === 'run' && pendingAction === `executeAction:${key}`) || (kind === 'ask' && pendingAction === `requestApproval:${key}`)
 
   return (
-    <section className="mt-6 space-y-8" data-testid="simulation-view" data-last-seq={view.lastSeq}>
-      <ConnectionNotice problem={problem} onRetry={() => void sync()} />
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm text-muted-foreground">
-          {ended ? 'Simulation ended' : 'Time remaining'}
-        </p>
-        <p className="font-mono text-xl tabular-nums" data-testid="time-remaining">
-          {remaining === null ? '--:--' : formatClock(remaining)}
-        </p>
-      </div>
-
-      {result && (
-        <div className="rounded-md border border-border p-4" data-testid="result">
-          <p className="text-xs text-muted-foreground">Outcome</p>
-          <p className="text-lg font-semibold" data-testid="outcome">
-            {OUTCOME_LABELS[result.outcome]}
-          </p>
-          <p className="mt-1 text-sm">
-            Score{' '}
-            <span className="font-mono tabular-nums" data-testid="score">
-              {result.score}
-            </span>{' '}
-            / 100
-          </p>
-        </div>
-      )}
-
-      <dl className="grid grid-cols-4 gap-4">
-        {(['health', 'containment', 'trust', 'evidence'] as const).map((metric) => (
-          <div key={metric} className="rounded-md border border-border p-3">
-            <dt className="text-xs capitalize text-muted-foreground">{metric}</dt>
-            <dd className="font-mono text-lg tabular-nums" data-testid={`metric-${metric}`}>
-              {view.metrics[metric]}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <div>
-        <h2 className="text-sm font-medium">Actions</h2>
-        {ROLES.map((role) => (
-          <div key={role} className="mt-4">
-            <h3 className="text-xs uppercase tracking-wide text-muted-foreground">{ROLE_LABELS[role]}</h3>
-            <ul className="mt-2 space-y-3">
-              {ACTION_IDS.filter((actionId) => ACTIONS[actionId].role === role).map((actionId) => (
-                <ActionRow
-                  key={actionId}
-                  actionId={actionId}
-                  view={view}
-                  clock={clock}
-                  ended={ended || problem === 'signed_out'}
-                  pendingAction={pendingAction}
-                  onRun={() => send('executeAction', actionId)}
-                  onRequestApproval={() => send('requestApproval', actionId)}
-                />
-              ))}
-            </ul>
-          </div>
-        ))}
-        {error && (
-          <p role="alert" className="mt-3 text-sm text-destructive" data-testid="action-error">
-            {error}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <h2 className="text-sm font-medium">Timeline</h2>
-        {events.length === 0 && <p className="mt-2 text-sm text-muted-foreground">No events yet.</p>}
-        <ol className="mt-2 space-y-2" data-testid="timeline">
-          {events.map((event) => (
-            <li key={event.seq} className="text-sm" data-testid={`event-${event.type}`}>
-              <span className="font-mono text-xs text-muted-foreground">
-                {formatClock(event.at - view.startedAt)}
-              </span>{' '}
-              {eventText(event)}
-              {event.finding && event.type !== 'incident' && (
-                <span className="block text-muted-foreground">{event.finding}</span>
-              )}
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <Button variant="secondary" onClick={onLeave}>
-        Back to list
-      </Button>
-    </section>
-  )
-}
-
-function ActionRow({
-  actionId,
-  view,
-  clock,
-  ended,
-  pendingAction,
-  onRun,
-  onRequestApproval,
-}: {
-  actionId: ActionId
-  view: SimulationState
-  clock: number
-  ended: boolean
-  pendingAction: string | null
-  onRun: () => void
-  onRequestApproval: () => void
-}) {
-  const definition = ACTIONS[actionId]
-  const action = view.actions[actionId]
-  // The same checks the server will make, used here only to label and enable
-  // buttons. The server's answer is the one that counts.
-  const verdict = validateExecute(view, actionId, clock)
-  const canRequestApproval = definition.needsApproval && validateApprovalRequest(view, actionId, clock).ok
-  const approval = view.approvals[actionId]
-
-  let status: string
-  if (action.status === 'completed') {
-    status = 'Completed'
-  } else if (action.status === 'in_progress') {
-    const left = (action.completesAt ?? clock) - clock
-    status = left > 0 ? `In progress — ${formatClock(left)}` : 'Finishing…'
-  } else if (verdict.ok) {
-    status = definition.durationMs === 0 ? 'Ready' : `${definition.durationMs / 1000}s`
-  } else if (
-    verdict.code === 'approval_pending' &&
-    approval &&
-    (approval.status === 'approved' || approval.status === 'denied')
-  ) {
-    status = `Approval processing — ${formatClock(approval.effectiveAt - clock)}`
-  } else {
-    status = BLOCKED_TEXT[verdict.code] ?? 'Unavailable'
-  }
-
-  return (
-    <li className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm">{definition.label}</p>
-        <p className="text-xs text-muted-foreground" data-testid={`action-status-${actionId}`}>
-          {status}
-        </p>
-      </div>
-      <div className="flex gap-2">
-        {canRequestApproval && !ended && (
-          <Button
-            variant="secondary"
-            onClick={onRequestApproval}
-            loading={pendingAction === `requestApproval:${actionId}`}
-            data-testid={`approve-${actionId}`}
-          >
-            Request approval
+    <CommandCenter
+      mode="solo"
+      rootTestId="simulation-view"
+      rootAttrs={{ 'data-last-seq': view.lastSeq }}
+      view={view}
+      events={events}
+      clock={clock}
+      remaining={remaining}
+      ended={ended}
+      locked={problem === 'signed_out'}
+      result={result}
+      role={null}
+      nameOf={() => 'You'}
+      findingsOf={(event) => (event.finding ? { shared: { text: event.finding } } : {})}
+      isPending={isPending}
+      onRun={(actionId) => void send('executeAction', actionId)}
+      onRequestApproval={(actionId) => void send('requestApproval', actionId)}
+      error={error}
+      notice={<ConnectionNotice problem={problem} onRetry={() => void sync()} />}
+      exits={
+        <div className="flex flex-wrap gap-2">
+          {result && (
+            <Button onClick={onLeave} data-testid="run-again">
+              <RotateCcw aria-hidden /> New simulation
+            </Button>
+          )}
+          <Button variant="outline" className="bg-transparent" onClick={onLeave} data-testid="back-to-runs">
+            <ArrowLeft aria-hidden /> Back to your runs
           </Button>
-        )}
-        <Button
-          onClick={onRun}
-          disabled={!verdict.ok || ended}
-          loading={pendingAction === `executeAction:${actionId}`}
-          data-testid={`action-${actionId}`}
-        >
-          Run
-        </Button>
-      </div>
-    </li>
+        </div>
+      }
+    />
   )
 }

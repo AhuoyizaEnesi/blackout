@@ -30,20 +30,16 @@ function SignedOutPanel() {
   const [showAuthModal, setShowAuthModal] = useState(false)
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-6 py-20">
-      <div className="w-full max-w-sm rounded-lg border border-border bg-card p-8 text-center">
-        <h1 className="text-lg font-semibold text-foreground">Sign in to continue</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          This page is only available to signed-in users.
-        </p>
-        <Button className="mt-6 w-full" onClick={() => setShowAuthModal(true)}>
+    <div className="flex min-h-[70vh] items-center justify-center px-5 py-16">
+      <div className="panel w-full max-w-sm p-7 text-center" data-testid="signed-out-panel">
+        <p className="eyebrow">Operation Nightfall</p>
+        <h1 className="mt-2 text-xl font-bold text-foreground">Sign in to continue</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Simulations, rooms and their postmortems are kept with your account.</p>
+        <Button className="mt-6 w-full" size="lg" onClick={() => setShowAuthModal(true)} data-testid="gate-sign-in">
           Sign in
         </Button>
-        <Link
-          to="/"
-          className="mt-4 inline-block text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-        >
-          Back to home
+        <Link to="/" className="mt-4 inline-block text-sm text-muted-foreground underline hover:text-foreground">
+          What is BLACKOUT?
         </Link>
       </div>
 

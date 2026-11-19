@@ -1,6 +1,9 @@
 /** App name — replaced by the CLI during scaffolding */
 export const APP_NAME = 'blackout'
 
+/** The product name as people read it. APP_NAME above is the technical name. */
+export const BRAND = 'BLACKOUT'
+
 /** Immutable app identity — data scope keys to this, so renames never
  *  strand your records.
  *

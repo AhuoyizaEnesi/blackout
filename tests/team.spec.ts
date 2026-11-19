@@ -627,9 +627,20 @@ test('simultaneous, conflicting and repeated commands leave one consistent share
   const longest = logs.reduce((a, b) => (b.length > a.length ? b : a))
   for (const log of logs) expect(log).toEqual(longest.slice(0, log.length))
   expect(longest.filter((e) => e.type === 'action_completed' && e.actionId === 'inspect_access_logs')).toHaveLength(1)
-  // Security reconnects: the old command replays the original result rather than acting again.
-  const replay = await send(security, 'inspect_access_logs', ids.s)
-  expect(replay.body).toMatchObject({ success: true, data: { replayed: true, seq: inspect.seq } })
+  // Security reconnects. Two command ids raced for this action in the burst (ids.s and a fresh one) and the log
+  // records which won. That command replays the original result rather than acting again.
+  const winner = results.filter((r) => r.actionId === 'inspect_access_logs' && r.commandId === inspect.commandId)
+  expect(winner.length).toBeGreaterThanOrEqual(1)
+  const replay = await send(security, 'inspect_access_logs', inspect.commandId)
+  expect(replay.body).toMatchObject({ success: true, data: { replayed: true, seq: inspect.seq, startedAt: inspect.at } })
+  // The first command id is either that winner, and replays too, or it lost, and is refused again by rule.
+  const first = await send(security, 'inspect_access_logs', ids.s)
+  if (inspect.commandId === ids.s) expect(first.body).toMatchObject({ success: true, data: { replayed: true, seq: inspect.seq } })
+  else expect(first.body).toMatchObject({ success: false, code: 'action_already_used' })
+  // Neither repeat added anything: still one start and one completion for the action.
+  const after = ok(await security.call<Sync>('syncSimulation', { simulationId: roomId })).events
+  expectWellFormed(after)
+  expect(after.filter((e) => e.actionId === 'inspect_access_logs').map((e) => e.type)).toEqual(['action_started', 'action_completed'])
   expect(ok((await send(security, 'correlate_session_events')).body).replayed).toBe(false)
 })
 

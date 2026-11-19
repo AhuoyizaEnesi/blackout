@@ -1,4 +1,6 @@
 @import "tailwindcss" source(none);
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/public-sans";
 @import "./themes.css";
 
 /* Scan local source + SDK components for Tailwind class usage */
@@ -8,7 +10,7 @@
 /*
  * Theming — pure shadcn/ui CSS variables with [data-theme] selectors.
  *
- * The @theme block below holds the default theme (slate). All other themes
+ * The @theme block below holds the one theme (nightfall). Any further themes
  * live in `themes.css` as `[data-theme="<id>"]` override blocks. Switching
  * themes = changing the data-theme attribute on <html> in index.html. No
  * JS, no FOUC.
@@ -17,50 +19,68 @@
  * they stay consistent across every preset.
  */
 @theme {
-  /* shadcn core tokens — slate (default): neutral gray on near-black, indigo accent */
-  --color-background: #0a0a0a;
-  --color-foreground: #e8eaed;
-  --color-card: #161616;
-  --color-card-foreground: #e8eaed;
-  --color-popover: #161616;
-  --color-popover-foreground: #e8eaed;
-  --color-primary: #818cf8;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #1e1e1e;
-  --color-secondary-foreground: #e8eaed;
-  --color-muted: #1e1e1e;
-  --color-muted-foreground: #9ca3af;
-  --color-accent: #262626;
-  --color-accent-foreground: #e8eaed;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #ffffff;
-  --color-border: rgba(60, 64, 67, 0.6);
-  --color-input: rgba(60, 64, 67, 0.6);
-  --color-ring: #818cf8;
-  --radius: 0.5rem;
+  /*
+   * Nightfall — BLACKOUT's own theme. Near-black surfaces, off-white type,
+   * and three status colours that mean something: red = critical,
+   * amber = warning / waiting, green = done. Nothing else is coloured.
+   */
+  --color-background: #090909;
+  --color-foreground: #ebe7de;
+  --color-card: #0f0f0e;
+  --color-card-foreground: #ebe7de;
+  --color-popover: #121211;
+  --color-popover-foreground: #ebe7de;
+  --color-primary: #ebe7de;
+  --color-primary-foreground: #090909;
+  --color-secondary: #181817;
+  --color-secondary-foreground: #ebe7de;
+  --color-muted: #151514;
+  --color-muted-foreground: #aaa69d;
+  --color-accent: #1e1e1c;
+  --color-accent-foreground: #ebe7de;
+  --color-destructive: #e5484d;
+  --color-destructive-foreground: #090909;
+  --color-border: rgba(235, 231, 222, 0.12);
+  --color-input: rgba(235, 231, 222, 0.24);
+  --color-ring: #ebe7de;
+
+  /* Semantic incident colours and their quiet surfaces. */
+  --color-critical: #e5484d;
+  --color-critical-surface: rgba(229, 72, 77, 0.09);
+  --color-caution: #e0a03a;
+  --color-caution-surface: rgba(224, 160, 58, 0.08);
+  --color-ok: #5fae6e;
+  --color-ok-surface: rgba(95, 174, 110, 0.08);
+  /* Text one step quieter than muted: timestamps, units, captions. Still >= 4.5:1 on the background. */
+  --color-subtle: #88847b;
+  /* The rule that structures a page; the default border is the hairline inside it. */
+  --color-border-strong: rgba(235, 231, 222, 0.3);
+
+  --font-sans: 'Inter Variable', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Public Sans Variable', 'Public Sans', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', 'Segoe UI Mono', Menlo, Consolas, monospace;
 
   /*
-   * Map the rounded-* utilities onto --radius so a theme (or you) can change
-   * the app's shape language in one place. At the default 0.5rem these equal
-   * Tailwind's stock values, so there is no visual change until a theme
-   * overrides --radius.
+   * Shape: square. The interface is built from rules and type, so corners
+   * are barely eased; only dots and avatars are round.
    */
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
+  --radius: 2px;
+  --radius-sm: 1px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 3px;
 
   /* Status colors — constant across all themes */
-  --color-success: #10b981;
+  --color-success: #5fae6e;
   --color-success-foreground: #ffffff;
-  --color-warning: #f59e0b;
+  --color-warning: #e0a03a;
   --color-warning-foreground: #ffffff;
   --color-info: #3b82f6;
   --color-info-foreground: #ffffff;
 
   /*
-   * Shadows — slate (default). Each theme in themes.css tunes these.
+   * Shadows — nightfall.
    *
    * Toned down 2026-05: previous values were 8px/12px offset with
    * 32px/40px blur which read as a heavy halo under every Card on
@@ -75,7 +95,7 @@
    * compiles these tokens into the utility-class definitions at build
    * time, and runtime [data-theme] overrides don't always cancel the
    * baked baseline cleanly — apps switching themes were getting the
-   * slate value carried forward on the compiled `shadow-card` class.
+   * default value carried forward on the compiled `shadow-card` class.
    * Sidestepping the token system in starter components is the
    * deterministic fix. See docs/platform/theming-shadows.md.
    */
@@ -88,8 +108,8 @@
      simply doesn't reference them. In every theme keep the panel reading as
      elevated: dark → panel lighter than shell; light → white panel on a
      faintly darker shell. */
-  --color-shell: #0a0a0a;
-  --color-shell-panel: #161616;
+  --color-shell: #090909;
+  --color-shell-panel: #0f0f0e;
 
   /* Animations */
   --animate-pulse-glow: pulse-glow 2s ease-in-out infinite;
@@ -164,7 +184,8 @@
   }
 
   body {
-    font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv11', 'ss01';
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -193,8 +214,8 @@
 
   /* Selection styling */
   ::selection {
-    background-color: var(--color-primary);
-    color: var(--color-primary-foreground);
+    background-color: rgba(235, 231, 222, 0.24);
+    color: var(--color-foreground);
   }
 
   /*
@@ -231,4 +252,93 @@
   a, button, [role="button"], input, select, textarea {
     touch-action: manipulation;
   }
+}
+
+/*
+ * BLACKOUT base rules.
+ */
+@layer base {
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  /* Keyboard focus: interactive elements only, never containers. */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  summary:focus-visible {
+    outline: 2px solid var(--color-foreground);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+  a { text-underline-offset: 3px; }
+}
+
+/* Numbers that change in place must not shift their neighbours. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+/* Small capitals label: section eyebrows, table headers. */
+@utility eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+/* A section title set as a label: heavier than an eyebrow, still small. */
+@utility kicker {
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  line-height: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-foreground);
+}
+/* Display numerals: the countdown, scores, the landing page's 8. */
+@utility numeral {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  line-height: 0.82;
+}
+/* A framed surface: a hairline box, square, used only where content must be set apart. */
+@utility panel {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-card);
+}
+
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@utility rise-in {
+  animation: rise-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes soft-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@utility soft-pulse {
+  animation: soft-pulse 1.8s ease-in-out infinite;
+}
+
+/* Nothing important is conveyed by motion alone, so all of it can go. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  [data-print="hide"] { display: none !important; }
+  html, body, #root { background: #fff !important; color: #000 !important; }
 }

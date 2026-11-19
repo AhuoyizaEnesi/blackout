@@ -1276,7 +1276,10 @@ describe('properties over random play', () => {
     return play
   }
 
-  it('holds every invariant on every run', () => {
+  // 400 random plays with several thousand assertions each: about 2 s alone on the development machine, 6-7 s when
+  // browsers and the local worker share the CPU (F-008). The work is fixed, so this one test gets room; the default
+  // five seconds stays in force for every other test.
+  it('holds every invariant on every run', { timeout: 20_000 }, () => {
     const outcomes = new Set<OutcomeId>()
     for (let seed = 1; seed <= RUNS; seed++) {
       const play = randomPlay(seed)

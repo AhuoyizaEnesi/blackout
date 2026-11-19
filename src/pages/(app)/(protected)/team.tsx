@@ -1,47 +1,31 @@
 /**
- * Team simulation — functional page, not the designed one.
+ * Team simulation: create or join a room, assemble in the lobby, play.
  *
- * Deliberately plain, like the solo page: it proves the multiplayer path end
- * to end and nothing more.
- *
- * It never decides anything. The room row, the shared event log and the
- * findings this person may read arrive over the realtime connection (the
+ * This page never decides anything. The room row, the shared event log and
+ * the findings this person may read arrive over the realtime connection (the
  * room only sends rows that list this user); the page folds the log with the
  * shared engine reducer for display and sends commands — ids only — to server
  * actions. Which role this person holds, what that role may do, and whether
  * an approval is valid are all checked on the server.
  *
- * "Connected" is presence: a hint about who has the page open. It grants
+ * "Online" is presence: a hint about who has the page open. It grants
  * nothing and nothing depends on it.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, ArrowRight, Check, Copy, DoorOpen, Play, X } from 'lucide-react'
 import { useAuth, usePresenceRoom, useQuery, useUsers } from 'deepspace'
 import { Button } from '@/components/ui'
-import {
-  ACTIONS,
-  ACTION_IDS,
-  GAME_EVENT_TYPES,
-  OUTCOME_LABELS,
-  ROLES,
-  ROLE_LABELS,
-  RULES_VERSION,
-  finalResult,
-  isActionId,
-  isIncidentId,
-  nextDue,
-  reduce,
-  validateApprovalRequest,
-  validateExecute,
-  type ActionId,
-  type GameEvent,
-  type GameEventType,
-  type RoleId,
-  type SimulationState,
-} from '@/game/engine'
+import { cn } from '@/lib/utils'
+import { ROLES, ROLE_LABELS, RULES_VERSION, finalResult, nextDue, reduce, type GameEvent, type RoleId } from '@/game/engine'
 import { MAX_MEMBERS, formatInviteCode, isRole } from '@/game/lobby'
+import { CommandCenter, type PendingKind } from '@/components/game/CommandCenter'
+import { RoomList } from '@/components/game/RunLists'
+import { ROLE_BRIEF } from '@/components/game/model'
+import { toGameEvents } from '@/components/game/rows'
 import { ConnectionNotice } from '@/components/ConnectionNotice'
+import { Page, PageHeader, StateMessage } from '@/components/PageHeader'
 import { callGameAction, isUnanswered, linkProblem, newCommandId, type ActionResponse, type LinkProblem } from '@/lib/game-api'
 import type { SimulationEventRow } from '@/schemas/simulation-schema'
 import type { SimulationFindingRow, TeamRoomRow } from '@/schemas/team-schema'
@@ -97,40 +81,6 @@ function currentRoom(row: TeamRoomRow | undefined, snapshot: RoomSnapshot | null
   return completed && newer.status === 'active' ? { ...newer, status: 'completed' } : newer
 }
 
-/** Why an available action cannot be run right now. Display only: the server decides. */
-const BLOCKED_TEXT: Record<string, string> = {
-  prerequisite_missing: 'Not possible yet',
-  approval_required: 'Needs commander approval',
-  approval_denied: 'Approval denied',
-  role_busy: 'Role busy',
-  simulation_ended: 'Ended',
-  wrong_role: 'Another role',
-}
-
-function formatClock(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000))
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`
-}
-
-function eventText(event: GameEvent): string {
-  const action = event.actionId ? ACTIONS[event.actionId].label : ''
-  switch (event.type) {
-    case 'action_started':
-      return `${action} started`
-    case 'action_completed':
-      return `${action} completed`
-    case 'approval_requested':
-      return `Approval requested: ${action}`
-    case 'approval_granted':
-    case 'approval_auto_granted':
-      return `Approval granted: ${action}`
-    case 'approval_denied':
-      return `Approval denied: ${action}`
-    case 'incident':
-      return 'Incident update'
-  }
-}
-
 interface MemberView {
   userId: string
   role: RoleId | null
@@ -144,15 +94,10 @@ export default function TeamPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const roomId = searchParams.get('room')
 
-  return (
-    <div className="mx-auto max-w-2xl px-6 py-10 text-foreground">
-      <h1 className="text-2xl font-semibold">Operation Nightfall — team</h1>
-      {roomId ? (
-        <RoomView key={roomId} roomId={roomId} onLeave={() => setSearchParams({})} />
-      ) : (
-        <Entrance onOpen={(room) => setSearchParams({ room })} />
-      )}
-    </div>
+  return roomId ? (
+    <RoomView key={roomId} roomId={roomId} onLeave={() => setSearchParams({})} />
+  ) : (
+    <Entrance onOpen={(room) => setSearchParams({ room })} />
   )
 }
 
@@ -184,55 +129,84 @@ function Entrance({ onOpen }: { onOpen: (roomId: string) => void }) {
   }
 
   return (
-    <section className="mt-6 space-y-6">
-      <p className="text-sm text-muted-foreground">
-        Three people, three roles. Create a room and share its code, or join with a code you were given.
-      </p>
-      <Button onClick={create} loading={pending === 'create'} data-testid="create-room">
-        Create team room
-      </Button>
-      <form
-        className="flex items-end gap-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void join()
-        }}
-      >
-        <label className="text-sm">
-          <span className="block text-xs text-muted-foreground">Invitation code</span>
-          <input
-            className="mt-1 rounded-md border border-border bg-background px-3 py-2 font-mono text-sm uppercase"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            placeholder="XXXX-XXXX-XXXX"
-            autoComplete="off"
-            data-testid="invite-input"
-          />
-        </label>
-        <Button type="submit" variant="secondary" loading={pending === 'join'} disabled={code.trim() === ''} data-testid="join-room">
-          Join
-        </Button>
-      </form>
+    <Page>
+      <PageHeader
+        eyebrow="Operation Nightfall · Team"
+        title="Respond as a team of three"
+        lead="One Incident Commander, one Security Engineer, one Infrastructure Engineer. Create a room and share its code, or join with a code you were given."
+      />
       {error && (
-        <p role="alert" className="text-sm text-destructive" data-testid="entrance-error">
+        <p role="alert" className="mt-5 border-l-2 border-critical bg-critical-surface px-4 py-3 text-sm" data-testid="entrance-error">
           {error}
         </p>
       )}
-      <div>
-        <h2 className="text-sm font-medium">Your rooms</h2>
-        {status === 'loading' && <p className="mt-2 text-sm text-muted-foreground">Loading…</p>}
-        {status === 'ready' && records.length === 0 && <p className="mt-2 text-sm text-muted-foreground">None yet.</p>}
-        <ul className="mt-2 space-y-1" data-testid="room-list">
-          {records.map((record) => (
-            <li key={record.recordId}>
-              <button type="button" className="text-sm underline" onClick={() => onOpen(record.recordId)}>
-                {formatInviteCode(record.data.inviteCode)} — {record.data.status}
-              </button>
-            </li>
-          ))}
-        </ul>
+      <div className="grid border-b border-border-strong lg:grid-cols-12">
+        <div className="lg:col-span-5 lg:border-r lg:border-border lg:pr-10">
+          <section aria-labelledby="create-heading" className="grid grid-cols-[2.75rem_minmax(0,1fr)] border-b border-border py-8">
+            <p className="numeral pt-1 text-2xl text-subtle" aria-hidden>
+              A
+            </p>
+            <div>
+              <h2 id="create-heading" className="text-2xl font-extrabold tracking-tight">
+                Create a room
+              </h2>
+              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">You become the host: you start the simulation once all three roles are taken, and only you can close the lobby.</p>
+              <Button size="lg" className="mt-5 h-12 w-full justify-between px-4 text-[15px] font-bold" onClick={create} loading={pending === 'create'} data-testid="create-room">
+                Create team room <ArrowRight aria-hidden />
+              </Button>
+            </div>
+          </section>
+          <section aria-labelledby="join-heading" className="grid grid-cols-[2.75rem_minmax(0,1fr)] py-8">
+            <p className="numeral pt-1 text-2xl text-subtle" aria-hidden>
+              B
+            </p>
+            <div>
+              <h2 id="join-heading" className="text-2xl font-extrabold tracking-tight">
+                Join with a code
+              </h2>
+              <form
+                className="mt-4"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  void join()
+                }}
+              >
+                <label className="block">
+                  <span className="eyebrow">Invitation code</span>
+                  <input
+                    className="mt-2 h-14 w-full border-0 border-b-2 border-border-strong bg-transparent px-0 font-mono text-xl font-semibold uppercase tracking-[0.1em] outline-none placeholder:font-normal placeholder:text-subtle/60 focus:border-foreground"
+                    value={code}
+                    onChange={(event) => setCode(event.target.value)}
+                    placeholder="XXXX-XXXX-XXXX"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    data-testid="invite-input"
+                  />
+                </label>
+                <Button type="submit" size="lg" variant="outline" className="mt-4 h-12 w-full justify-between bg-transparent px-4 text-[15px] font-bold" loading={pending === 'join'} disabled={code.trim() === ''} data-testid="join-room">
+                  Join room <ArrowRight aria-hidden />
+                </Button>
+              </form>
+              <p className="mt-3 text-xs text-subtle">Twelve characters; dashes and capitals do not matter. A room holds three people.</p>
+            </div>
+          </section>
+        </div>
+        <section aria-labelledby="rooms-heading" className="min-w-0 border-t border-border py-8 lg:col-span-7 lg:border-t-0 lg:pl-10">
+          <h2 id="rooms-heading" className="kicker mb-4">
+            Your rooms
+          </h2>
+          <RoomList records={records} status={status} onOpen={onOpen} />
+        </section>
       </div>
-    </section>
+      <p className="pt-5 text-sm text-muted-foreground">
+        On your own?{' '}
+        <Link to="/simulation" className="font-semibold text-foreground underline">
+          Start a solo run
+        </Link>
+        .
+      </p>
+    </Page>
   )
 }
 
@@ -251,6 +225,8 @@ function RoomView({ roomId, onLeave }: { roomId: string; onLeave: () => void }) 
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [synced, setSynced] = useState(false)
+  const [copied, setCopied] = useState<'yes' | 'failed' | null>(null)
+  const [confirmClose, setConfirmClose] = useState(false)
 
   const learnClock = useCallback((clock: ServerClock) => setClockOffset(clock.serverNow - Date.now()), [])
 
@@ -306,34 +282,26 @@ function RoomView({ roomId, onLeave }: { roomId: string; onLeave: () => void }) 
 
   if (!room && (rooms.status === 'loading' || !synced)) {
     return (
-      <div className="mt-6 space-y-4">
-        <ConnectionNotice problem={problem} onRetry={() => void syncRoom()} />
-        <p className="text-sm text-muted-foreground">Loading room…</p>
-      </div>
+      <Page>
+        <div className="space-y-4">
+          <ConnectionNotice problem={problem} onRetry={() => void syncRoom()} />
+          <StateMessage>Loading room…</StateMessage>
+        </div>
+      </Page>
     )
   }
   if (!room || !userId) {
     return (
-      <div className="mt-6 space-y-4">
-        <p className="text-sm text-muted-foreground" data-testid="room-missing">
-          This room does not exist, or you are not a participant in it.
-        </p>
-        <Button variant="secondary" onClick={onLeave}>
-          Back
-        </Button>
-      </div>
+      <Unavailable testId="room-missing" onLeave={onLeave}>
+        This room does not exist, or you are not a participant in it.
+      </Unavailable>
     )
   }
   if (room.data.rulesVersion !== RULES_VERSION) {
     return (
-      <div className="mt-6 space-y-4">
-        <p className="text-sm text-muted-foreground" data-testid="room-legacy">
-          This room was played under an earlier version of the scenario rules and cannot be shown.
-        </p>
-        <Button variant="secondary" onClick={onLeave}>
-          Back
-        </Button>
-      </div>
+      <Unavailable testId="room-legacy" onLeave={onLeave}>
+        This room was played under an earlier version of the scenario rules and cannot be shown.
+      </Unavailable>
     )
   }
 
@@ -343,137 +311,312 @@ function RoomView({ roomId, onLeave }: { roomId: string; onLeave: () => void }) 
   const status = room.data.status
   const nameOf = (id: string) => users.find((user) => user.id === id)?.name ?? 'Participant'
   const isOnline = (id: string) => (id === userId ? presence.connected : presence.peers.some((peer) => peer.userId === id))
-  const ready = members.length === MAX_MEMBERS && ROLES.every((role) => members.some((member) => member.role === role))
+  const rolesTaken = ROLES.filter((role) => members.some((member) => member.role === role)).length
+  const ready = members.length === MAX_MEMBERS && rolesTaken === ROLES.length
+  const code = formatInviteCode(room.data.inviteCode)
 
-  return (
-    <section className="mt-6 space-y-8" data-testid="room-view" data-status={status}>
-      <ConnectionNotice problem={problem} onRetry={() => void syncRoom()} />
-      <div>
-        <h2 className="text-sm font-medium">Participants</h2>
-        <ul className="mt-2 space-y-1" data-testid="participants">
-          {members.map((member) => (
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopied('yes')
+    } catch {
+      setCopied('failed')
+    }
+  }
+
+  const roster = (
+    <section aria-labelledby="team-heading" className="min-w-0">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="team-heading" className="kicker">
+          Your team
+        </h2>
+        <span className="text-xs text-muted-foreground tabular">
+          {members.length} / {MAX_MEMBERS}
+        </span>
+      </div>
+      <ul className="mt-4 border-t border-border-strong" data-testid="participants">
+        {members.map((member) => {
+          const online = isOnline(member.userId)
+          return (
             <li
               key={member.userId}
-              className="flex items-center justify-between text-sm"
+              className="border-b border-border py-3"
               data-testid="member"
               data-user-id={member.userId}
               data-role={member.role ?? ''}
-              data-online={isOnline(member.userId) ? 'true' : 'false'}
+              data-online={online ? 'true' : 'false'}
             >
-              <span>
-                {nameOf(member.userId)}
-                {member.userId === userId && <span className="text-muted-foreground"> (you)</span>}
-                {member.userId === room.data.hostId && <span className="text-muted-foreground"> · host</span>}
-              </span>
-              <span className="text-muted-foreground">
-                {member.role ? ROLE_LABELS[member.role] : 'No role yet'} · {isOnline(member.userId) ? 'connected' : 'disconnected'}
-              </span>
+              <p className="eyebrow">{member.role ? ROLE_LABELS[member.role] : 'No role yet'}</p>
+              <p className="mt-1 flex flex-wrap items-baseline gap-x-2 font-display text-base font-bold leading-snug">
+                <span className="truncate">{nameOf(member.userId)}</span>
+                {member.userId === userId && <span className="font-sans text-xs font-normal text-muted-foreground">(you)</span>}
+                {member.userId === room.data.hostId && <span className="border border-border-strong px-1 py-px font-sans text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Host</span>}
+              </p>
+              <p className={cn('mt-1 inline-flex items-center gap-1.5 text-xs', online ? 'text-ok' : 'text-subtle')}>
+                <span className={cn('size-1.5 rounded-full', online ? 'bg-ok' : 'border border-subtle')} aria-hidden />
+                {online ? 'Online' : 'Offline'}
+              </p>
             </li>
-          ))}
-        </ul>
-      </div>
-
-      {status === 'lobby' && (
-        <div className="space-y-6" data-testid="lobby">
-          <div className="rounded-md border border-border p-4">
-            <p className="text-xs text-muted-foreground">Invitation code — share it with your two teammates</p>
-            <p className="font-mono text-xl tracking-widest" data-testid="invite-code">
-              {formatInviteCode(room.data.inviteCode)}
-            </p>
-          </div>
-          <div>
-            <h2 className="text-sm font-medium">Roles</h2>
-            <ul className="mt-2 space-y-2">
-              {ROLES.map((role) => {
-                const holder = members.find((member) => member.role === role)
-                const mine = holder?.userId === userId
-                return (
-                  <li key={role} className="flex items-center justify-between gap-4 text-sm">
-                    <span>
-                      {ROLE_LABELS[role]}
-                      <span className="text-muted-foreground" data-testid={`role-holder-${role}`}>
-                        {' '}
-                        — {holder ? (mine ? 'you' : nameOf(holder.userId)) : 'open'}
-                      </span>
-                    </span>
-                    {mine ? (
-                      <Button variant="secondary" onClick={() => lobbyCommand('releaseRole')} loading={pending === 'releaseRole:'} data-testid="release-role">
-                        Release
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() => lobbyCommand('claimRole', { role })}
-                        disabled={!!holder || !me}
-                        loading={pending === `claimRole:${role}`}
-                        data-testid={`claim-${role}`}
-                      >
-                        Take role
-                      </Button>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-          <div className="flex gap-2">
-            {isHost ? (
-              <>
-                <Button onClick={() => lobbyCommand('startRoom')} disabled={!ready} loading={pending === 'startRoom:'} data-testid="start-room">
-                  Start simulation
-                </Button>
-                <Button variant="secondary" onClick={() => lobbyCommand('abandonRoom')} loading={pending === 'abandonRoom:'} data-testid="abandon-room">
-                  Close room
-                </Button>
-              </>
-            ) : (
-              <Button variant="secondary" onClick={() => lobbyCommand('leaveRoom')} loading={pending === 'leaveRoom:'} data-testid="leave-room">
-                Leave room
-              </Button>
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground" data-testid="lobby-hint">
-            {ready
-              ? isHost
-                ? 'Everyone is ready. The clock starts on the server when you start.'
-                : 'Everyone is ready. Waiting for the host to start.'
-              : 'The simulation can start once three people hold the three roles.'}
-          </p>
-        </div>
-      )}
-
-      {status === 'abandoned' && (
-        <p className="text-sm text-muted-foreground" data-testid="room-abandoned" data-reason={room.data.closedReason ?? 'host'}>
-          {room.data.closedReason === 'expired'
-            ? 'This room was not used for a day and has closed. Create a new room to play.'
-            : 'The host closed this room before the simulation started.'}
+          )
+        })}
+      </ul>
+      {status === 'lobby' && members.length < MAX_MEMBERS && (
+        <p className="pt-3 text-xs text-muted-foreground">
+          Waiting for {MAX_MEMBERS - members.length} more {MAX_MEMBERS - members.length === 1 ? 'person' : 'people'}.
         </p>
       )}
+    </section>
+  )
 
-      {(status === 'active' || status === 'completed') && me?.role && typeof room.data.startedAt === 'number' && (
+  const playing = (status === 'active' || status === 'completed') && !!me?.role && typeof room.data.startedAt === 'number'
+
+  return (
+    <section data-testid="room-view" data-status={status}>
+      {playing ? (
         <TeamSimulation
           roomId={roomId}
-          startedAt={room.data.startedAt}
+          startedAt={room.data.startedAt as number}
           userId={userId}
-          role={me.role}
-          members={members}
+          role={me.role as RoleId}
           nameOf={nameOf}
           clockOffset={clockOffset}
           learnClock={learnClock}
           onEnded={syncRoom}
           problem={problem}
           note={note}
+          teamPanel={roster}
+          onRetry={() => void syncRoom()}
+          onLeave={onLeave}
         />
-      )}
+      ) : (
+        <Page>
+          <PageHeader
+            eyebrow="Operation Nightfall · Team lobby"
+            title={status === 'lobby' ? 'Assemble the response team' : 'Team room'}
+            lead={status === 'lobby' ? 'Three people, three roles. The clock starts on the server when the host starts the simulation.' : undefined}
+          />
+          <div className="space-y-5">
+            <div className="space-y-4 pt-5 empty:hidden">
+              <ConnectionNotice problem={problem} onRetry={() => void syncRoom()} />
+              {error && (
+                <p role="alert" className="border-l-2 border-critical bg-critical-surface px-4 py-3 text-sm" data-testid="room-error">
+                  {error}
+                </p>
+              )}
+            </div>
 
-      {error && (
-        <p role="alert" className="text-sm text-destructive" data-testid="room-error">
-          {error}
-        </p>
+            {status === 'lobby' && (
+              <div className="grid border-b border-border-strong lg:grid-cols-[minmax(0,1fr)_21rem]" data-testid="lobby">
+                <div className="min-w-0 pb-8 lg:border-r lg:border-border lg:pr-10">
+                  <section aria-labelledby="roles-heading">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <h2 id="roles-heading" className="kicker">
+                        Role assignment
+                      </h2>
+                      <p className="text-xs text-muted-foreground tabular">
+                        {rolesTaken} of {ROLES.length} taken
+                      </p>
+                    </div>
+                    <ul className="mt-4 grid border-t border-border-strong md:grid-cols-3">
+                      {ROLES.map((role, index) => {
+                        const holder = members.find((member) => member.role === role)
+                        const mine = holder?.userId === userId
+                        return (
+                          <li
+                            key={role}
+                            className={cn(
+                              'relative flex flex-col border-b border-border px-0 pb-6 pt-6 md:min-h-[23rem] md:border-b-0 md:px-6',
+                              index > 0 && 'md:border-l md:border-border',
+                              index === 0 && 'md:pl-0',
+                              mine && 'md:bg-secondary/60 md:pl-6',
+                            )}
+                            data-role-slot={role}
+                            data-held={holder ? (mine ? 'self' : 'other') : 'open'}
+                          >
+                            {/* The bar across the top is the slot's state: solid when held, broken while open. */}
+                            <span
+                              className={cn('absolute inset-x-0 top-0 h-1', mine ? 'bg-foreground' : holder ? 'bg-muted-foreground/60' : 'bg-[repeating-linear-gradient(90deg,var(--color-caution)_0_8px,transparent_8px_14px)]')}
+                              aria-hidden
+                            />
+                            <p className="numeral text-[3.25rem] text-subtle" aria-hidden>
+                              0{index + 1}
+                            </p>
+                            <h3 className="mt-6 text-[1.625rem] font-extrabold leading-[1.05] tracking-[-0.02em]">{ROLE_LABELS[role]}</h3>
+                            <p className="mt-2.5 flex-1 text-sm leading-relaxed text-muted-foreground">{ROLE_BRIEF[role]}</p>
+                            <div className="mt-6 border-t border-border pt-3">
+                              <p className="eyebrow">Status</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+                                <p className={cn('font-display text-lg font-bold leading-snug', holder ? 'text-foreground' : 'text-caution')} data-testid={`role-holder-${role}`}>
+                                  {holder ? (mine ? 'Held by you' : `Held by ${nameOf(holder.userId)}`) : 'Open'}
+                                </p>
+                                {holder && holder.userId === room.data.hostId && (
+                                  <span className="border border-border-strong px-1 py-px text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">Host</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="mt-4">
+                              {mine ? (
+                                <Button variant="outline" className="w-full bg-transparent" onClick={() => lobbyCommand('releaseRole')} loading={pending === 'releaseRole:'} data-testid="release-role">
+                                  Release role
+                                </Button>
+                              ) : (
+                                <Button
+                                  className={cn('w-full', (!!holder || !me) && 'border border-border bg-transparent text-subtle disabled:opacity-100')}
+                                  onClick={() => lobbyCommand('claimRole', { role })}
+                                  disabled={!!holder || !me}
+                                  loading={pending === `claimRole:${role}`}
+                                  data-testid={`claim-${role}`}
+                                >
+                                  {holder ? 'Taken' : 'Take role'}
+                                </Button>
+                              )}
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </section>
+
+                  <section aria-labelledby="code-heading" className="mt-10 grid gap-x-10 gap-y-4 border-t border-border-strong pt-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <div className="min-w-0">
+                      <h2 id="code-heading" className="kicker">
+                        Invitation code
+                      </h2>
+                      <p className="mt-4 break-all font-mono text-[clamp(1.5rem,0.8rem+3vw,3.25rem)] font-semibold leading-none tracking-[0.08em]" data-testid="invite-code">
+                        {code}
+                      </p>
+                      <p className="mt-4 max-w-md text-xs leading-relaxed text-muted-foreground">Give it to your two teammates. Anyone signed in who has it can take a free seat.</p>
+                    </div>
+                    <div>
+                      <Button variant="outline" className="bg-transparent" onClick={() => void copyCode()} data-testid="copy-code">
+                        {copied === 'yes' ? <Check aria-hidden /> : <Copy aria-hidden />}
+                        {copied === 'yes' ? 'Copied' : 'Copy code'}
+                      </Button>
+                      <p className="sr-only" role="status" data-testid="copy-status">
+                        {copied === 'yes' ? 'Invitation code copied.' : copied === 'failed' ? 'Could not copy. Select the code and copy it by hand.' : ''}
+                      </p>
+                      {copied === 'failed' && <p className="mt-1.5 text-xs text-caution">Could not copy — select the code instead.</p>}
+                    </div>
+                  </section>
+                </div>
+
+                <div className="min-w-0 space-y-8 border-t border-border py-6 lg:border-t-0 lg:pb-8 lg:pl-8 lg:pt-0">
+                  {roster}
+
+                  <section aria-labelledby="ready-heading" data-testid="readiness" data-ready={ready ? 'true' : 'false'}>
+                    <h2 id="ready-heading" className="kicker">
+                      Start readiness
+                    </h2>
+                    <p className={cn('mt-3 font-display text-[1.75rem] font-extrabold leading-[1.05] tracking-[-0.02em]', ready ? 'text-foreground' : 'text-caution')} data-testid="readiness-headline">
+                      {ready
+                        ? 'Ready to start'
+                        : members.length < MAX_MEMBERS
+                          ? `Waiting for ${MAX_MEMBERS - members.length} more ${MAX_MEMBERS - members.length === 1 ? 'person' : 'people'}`
+                          : `${ROLES.length - rolesTaken} ${ROLES.length - rolesTaken === 1 ? 'role' : 'roles'} still open`}
+                    </p>
+                    <ul className="mt-4 border-t border-border-strong text-sm">
+                      <ReadyLine met={members.length === MAX_MEMBERS}>
+                        {members.length} of {MAX_MEMBERS} people joined
+                      </ReadyLine>
+                      <ReadyLine met={rolesTaken === ROLES.length}>
+                        {rolesTaken} of {ROLES.length} roles taken
+                      </ReadyLine>
+                    </ul>
+                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground" data-testid="lobby-hint">
+                      {ready
+                        ? isHost
+                          ? 'Everyone is ready. The clock starts on the server when you start.'
+                          : 'Everyone is ready. Waiting for the host to start.'
+                        : 'The simulation can start once three people hold the three roles.'}
+                    </p>
+                    <p className="mt-2 text-xs leading-relaxed text-muted-foreground" data-testid="host-line">
+                      Host: <span className="font-semibold text-foreground">{nameOf(room.data.hostId)}</span>
+                      {isHost ? ' (you)' : ''}. Only the host can start or close the room.
+                    </p>
+                    <div className="mt-4 flex flex-col gap-2">
+                      {isHost ? (
+                        <>
+                          <Button
+                            size="lg"
+                            className={cn('h-12 w-full justify-between px-4 text-[15px] font-bold', !ready && 'border border-border bg-transparent text-subtle disabled:opacity-100')}
+                            onClick={() => lobbyCommand('startRoom')}
+                            disabled={!ready}
+                            loading={pending === 'startRoom:'}
+                            data-testid="start-room"
+                          >
+                            Start simulation <Play aria-hidden />
+                          </Button>
+                          {confirmClose ? (
+                            <div className="border-l-2 border-critical bg-critical-surface p-3" role="group" aria-label="Confirm closing the room">
+                              <p className="text-sm">Close this room for everyone? It cannot be reopened.</p>
+                              <div className="mt-2.5 flex gap-2">
+                                <Button size="sm" variant="destructive" onClick={() => lobbyCommand('abandonRoom')} loading={pending === 'abandonRoom:'} data-testid="abandon-confirm">
+                                  Close room
+                                </Button>
+                                <Button size="sm" variant="outline" className="bg-transparent" onClick={() => setConfirmClose(false)} data-testid="abandon-cancel">
+                                  Keep it open
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button variant="ghost" className="w-full justify-between px-4 text-muted-foreground" onClick={() => setConfirmClose(true)} data-testid="abandon-room">
+                              Close room <X aria-hidden />
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        <Button variant="outline" className="w-full justify-between bg-transparent px-4" onClick={() => lobbyCommand('leaveRoom')} loading={pending === 'leaveRoom:'} data-testid="leave-room">
+                          Leave room <DoorOpen aria-hidden />
+                        </Button>
+                      )}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            )}
+
+            {status === 'abandoned' && (
+              <StateMessage testId="room-abandoned" attrs={{ 'data-reason': room.data.closedReason ?? 'host' }}>
+                {room.data.closedReason === 'expired'
+                  ? 'This room was not used for a day and has closed. Create a new room to play.'
+                  : 'The host closed this room before the simulation started.'}
+              </StateMessage>
+            )}
+            {status !== 'lobby' && <div className="max-w-md pt-4">{roster}</div>}
+
+            <Button variant="ghost" className="px-0 text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={onLeave}>
+              <ArrowLeft aria-hidden /> Back to rooms
+            </Button>
+          </div>
+        </Page>
       )}
-      <Button variant="secondary" onClick={onLeave}>
-        Back to rooms
-      </Button>
     </section>
+  )
+}
+
+function ReadyLine({ met, children }: { met: boolean; children: ReactNode }) {
+  return (
+    <li className="flex items-center justify-between gap-3 border-b border-border py-2.5" data-met={met ? 'true' : 'false'}>
+      <span className={met ? 'text-foreground' : 'text-muted-foreground'}>{children}</span>
+      <span className={cn('inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em]', met ? 'text-ok' : 'text-caution')}>
+        {met && <Check className="size-3" aria-hidden />}
+        {met ? 'Met' : 'Waiting'}
+      </span>
+    </li>
+  )
+}
+
+function Unavailable({ children, testId, onLeave }: { children: string; testId: string; onLeave: () => void }) {
+  return (
+    <Page narrow>
+      <PageHeader eyebrow="Operation Nightfall · Team" title="This room cannot be shown" />
+      <div className="space-y-4 pt-6">
+        <StateMessage testId={testId}>{children}</StateMessage>
+        <Button variant="ghost" className="px-0 text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={onLeave}>
+          <ArrowLeft aria-hidden /> Back to rooms
+        </Button>
+      </div>
+    </Page>
   )
 }
 
@@ -482,25 +625,29 @@ function TeamSimulation({
   startedAt,
   userId,
   role,
-  members,
   nameOf,
   clockOffset,
   learnClock,
   onEnded,
   problem,
   note,
+  teamPanel,
+  onRetry,
+  onLeave,
 }: {
   roomId: string
   startedAt: number
   userId: string
   role: RoleId
-  members: MemberView[]
   nameOf: (id: string) => string
   clockOffset: number | null
   learnClock: (clock: ServerClock) => void
   onEnded: () => Promise<unknown>
   problem: LinkProblem
   note: (result: ActionResponse<ServerClock>) => void
+  teamPanel: ReactNode
+  onRetry: () => void
+  onLeave: () => void
 }) {
   const eventsQuery = useQuery<SimulationEventRow>('simulation_events', {
     where: { simulationId: roomId },
@@ -550,19 +697,7 @@ function TeamSimulation({
   }, [])
 
   const events = useMemo<GameEvent[]>(() => {
-    const live: GameEvent[] = eventsQuery.records
-        .map((record) => record.data)
-        .filter((row) => GAME_EVENT_TYPES.includes(row.type as GameEventType))
-        .map((row) => ({
-          seq: row.seq,
-          type: row.type as GameEventType,
-          ...(isActionId(row.actionId) ? { actionId: row.actionId } : {}),
-          ...(isIncidentId(row.incidentId) ? { incidentId: row.incidentId } : {}),
-          at: row.at,
-          actorId: row.actorId ?? '',
-          commandId: row.commandId ?? '',
-        }))
-        .sort((a, b) => a.seq - b.seq)
+    const live = toGameEvents(eventsQuery.records, false)
     // The log only grows, so whichever copy reaches further is the newer one.
     return (synced.events.at(-1)?.seq ?? 0) > (live.at(-1)?.seq ?? 0) ? synced.events : live
   }, [eventsQuery.records, synced.events])
@@ -629,7 +764,11 @@ function TeamSimulation({
   }
 
   if (eventsQuery.status === 'loading' || !view) {
-    return <p className="text-sm text-muted-foreground">Loading simulation…</p>
+    return (
+      <Page>
+        <StateMessage>Loading simulation…</StateMessage>
+      </Page>
+    )
   }
 
   const ended = result !== null || (serverNow !== null && serverNow >= view.deadlineAt)
@@ -641,235 +780,43 @@ function TeamSimulation({
     if (!findings.some((have) => have.eventSeq === finding.eventSeq && have.scope === finding.scope)) findings.push(finding)
   }
 
-  // Requests waiting for the commander: the action, and the event that asked.
-  const pendingApprovals = ACTION_IDS.filter((actionId) => view.approvals[actionId]?.status === 'requested').map((actionId) => {
-    const request = [...events].reverse().find((event) => event.type === 'approval_requested' && event.actionId === actionId)
-    return { actionId, request }
-  })
-  const commander = members.find((member) => member.role === 'commander')
-
   return (
-    <div className="space-y-8" data-testid="team-simulation" data-my-role={role} data-last-seq={view.lastSeq}>
-      <div className="flex items-baseline justify-between">
-        <p className="text-sm text-muted-foreground">
-          {ended ? 'Simulation ended' : 'Time remaining'} · you are the <span data-testid="my-role">{ROLE_LABELS[role]}</span>
-        </p>
-        <p className="font-mono text-xl tabular-nums" data-testid="time-remaining">
-          {remaining === null ? '--:--' : formatClock(remaining)}
-        </p>
-      </div>
-
-      {result && (
-        <div className="rounded-md border border-border p-4" data-testid="result">
-          <p className="text-xs text-muted-foreground">Outcome</p>
-          <p className="text-lg font-semibold" data-testid="outcome">
-            {OUTCOME_LABELS[result.outcome]}
-          </p>
-          <p className="mt-1 text-sm">
-            Score{' '}
-            <span className="font-mono tabular-nums" data-testid="score">
-              {result.score}
-            </span>{' '}
-            / 100
-          </p>
-        </div>
-      )}
-
-      <dl className="grid grid-cols-4 gap-4">
-        {(['health', 'containment', 'trust', 'evidence'] as const).map((metric) => (
-          <div key={metric} className="rounded-md border border-border p-3">
-            <dt className="text-xs capitalize text-muted-foreground">{metric}</dt>
-            <dd className="font-mono text-lg tabular-nums" data-testid={`metric-${metric}`}>
-              {view.metrics[metric]}
-            </dd>
-          </div>
-        ))}
-      </dl>
-
-      <div>
-        <h2 className="text-sm font-medium">Pending approvals</h2>
-        {pendingApprovals.length === 0 && (
-          <p className="mt-2 text-sm text-muted-foreground" data-testid="no-pending-approvals">
-            None.
-          </p>
-        )}
-        <ul className="mt-2 space-y-3" data-testid="pending-approvals">
-          {pendingApprovals.map(({ actionId, request }) => (
-            <li key={actionId} className="flex items-center justify-between gap-4" data-testid={`pending-${actionId}`}>
-              <div>
-                <p className="text-sm">{ACTIONS[actionId].label}</p>
-                <p className="text-xs text-muted-foreground">
-                  Requested by {request ? nameOf(request.actorId) : 'a teammate'} · waiting for{' '}
-                  {commander ? nameOf(commander.userId) : 'the commander'}
-                </p>
-              </div>
-              {role === 'commander' && request && !ended && (
-                <div className="flex gap-2">
-                  <Button
-                    onClick={() => send('decideApproval', `approve:${actionId}:${request.seq}`, { actionId, requestSeq: request.seq, decision: 'approve' })}
-                    loading={pendingCommand === `approve:${actionId}:${request.seq}`}
-                    data-testid={`decide-approve-${actionId}`}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => send('decideApproval', `deny:${actionId}:${request.seq}`, { actionId, requestSeq: request.seq, decision: 'deny' })}
-                    loading={pendingCommand === `deny:${actionId}:${request.seq}`}
-                    data-testid={`decide-deny-${actionId}`}
-                  >
-                    Deny
-                  </Button>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <div>
-        <h2 className="text-sm font-medium">Actions</h2>
-        {ROLES.map((group) => (
-          <div key={group} className="mt-4">
-            <h3 className="text-xs uppercase tracking-wide text-muted-foreground">
-              {ROLE_LABELS[group]}
-              {group === role ? ' — you' : ''}
-            </h3>
-            <ul className="mt-2 space-y-3">
-              {ACTION_IDS.filter((actionId) => ACTIONS[actionId].role === group).map((actionId) => (
-                <ActionRow
-                  key={actionId}
-                  actionId={actionId}
-                  view={view}
-                  clock={clock}
-                  ended={ended}
-                  mine={group === role}
-                  pendingCommand={pendingCommand}
-                  onRun={() => send('executeAction', `run:${actionId}`, { actionId })}
-                  onRequestApproval={() => send('requestApproval', `ask:${actionId}`, { actionId })}
-                />
-              ))}
-            </ul>
-          </div>
-        ))}
-        {error && (
-          <p role="alert" className="mt-3 text-sm text-destructive" data-testid="action-error">
-            {error}
-          </p>
-        )}
-      </div>
-
-      <div>
-        <h2 className="text-sm font-medium">Timeline</h2>
-        <ol className="mt-2 space-y-2" data-testid="timeline">
-          {events.map((event) => {
-            const shared = findings.find((finding) => finding.eventSeq === event.seq && finding.scope === 'team')
-            const own = findings.find((finding) => finding.eventSeq === event.seq && finding.scope === 'private' && finding.ownerId === userId)
-            return (
-              <li key={event.seq} className="text-sm" data-testid={`event-${event.type}`} data-seq={event.seq}>
-                <span className="font-mono text-xs text-muted-foreground">{formatClock(event.at - view.startedAt)}</span>{' '}
-                {event.type === 'incident' ? (shared?.text ?? eventText(event)) : eventText(event)}
-                {event.type !== 'incident' && event.actorId && (
-                  <span className="text-muted-foreground"> — {nameOf(event.actorId)}</span>
-                )}
-                {event.type !== 'incident' && shared && (
-                  <span className="block text-muted-foreground" data-testid="finding-team">
-                    {shared.text}
-                    {shared.sharedBy ? ` (shared by ${nameOf(shared.sharedBy)})` : ''}
-                  </span>
-                )}
-                {own && !shared && (
-                  <span className="block text-muted-foreground" data-testid="finding-private">
-                    {own.text} <span className="text-xs">(only you can see this)</span>{' '}
-                    <button
-                      type="button"
-                      className="text-xs underline"
-                      disabled={pendingCommand === `share:${event.seq}`}
-                      onClick={() => send('shareFinding', `share:${event.seq}`, { eventSeq: event.seq })}
-                      data-testid={`share-${event.seq}`}
-                    >
-                      Share with team
-                    </button>
-                  </span>
-                )}
-              </li>
-            )
-          })}
-        </ol>
-      </div>
-    </div>
-  )
-}
-
-function ActionRow({
-  actionId,
-  view,
-  clock,
-  ended,
-  mine,
-  pendingCommand,
-  onRun,
-  onRequestApproval,
-}: {
-  actionId: ActionId
-  view: SimulationState
-  clock: number
-  ended: boolean
-  mine: boolean
-  pendingCommand: string | null
-  onRun: () => void
-  onRequestApproval: () => void
-}) {
-  const definition = ACTIONS[actionId]
-  const action = view.actions[actionId]
-  // The same checks the server makes, used only to label and enable buttons.
-  // The role here is always the action's own, so the label says why the
-  // ACTION is blocked; whether THIS person may act is `mine`.
-  const verdict = validateExecute(view, actionId, clock, [definition.role])
-  const canRequestApproval = definition.needsApproval && validateApprovalRequest(view, actionId, clock, [definition.role]).ok
-  const approval = view.approvals[actionId]
-
-  let status: string
-  if (action.status === 'completed') {
-    status = 'Completed'
-  } else if (action.status === 'in_progress') {
-    const left = (action.completesAt ?? clock) - clock
-    status = left > 0 ? `In progress — ${formatClock(left)}` : 'Finishing…'
-  } else if (approval?.status === 'requested') {
-    status = 'Waiting for the commander'
-  } else if (verdict.ok) {
-    status = definition.durationMs === 0 ? 'Ready' : `${definition.durationMs / 1000}s`
-  } else if (verdict.code === 'approval_pending' && approval && (approval.status === 'approved' || approval.status === 'denied')) {
-    status = `Approval processing — ${formatClock(approval.effectiveAt - clock)}`
-  } else {
-    status = BLOCKED_TEXT[verdict.code] ?? 'Unavailable'
-  }
-
-  return (
-    <li className="flex items-center justify-between gap-4">
-      <div>
-        <p className="text-sm">{definition.label}</p>
-        <p className="text-xs text-muted-foreground" data-testid={`action-status-${actionId}`}>
-          {status}
-        </p>
-      </div>
-      {mine && (
-        <div className="flex gap-2">
-          {canRequestApproval && !ended && (
-            <Button
-              variant="secondary"
-              onClick={onRequestApproval}
-              loading={pendingCommand === `ask:${actionId}`}
-              data-testid={`approve-${actionId}`}
-            >
-              Request approval
-            </Button>
-          )}
-          <Button onClick={onRun} disabled={!verdict.ok || ended} loading={pendingCommand === `run:${actionId}`} data-testid={`action-${actionId}`}>
-            Run
+    <CommandCenter
+      mode="team"
+      rootTestId="team-simulation"
+      rootAttrs={{ 'data-my-role': role, 'data-last-seq': view.lastSeq }}
+      view={view}
+      events={events}
+      clock={clock}
+      remaining={remaining}
+      ended={ended}
+      locked={problem === 'signed_out'}
+      result={result}
+      role={role}
+      nameOf={nameOf}
+      findingsOf={(event) => {
+        const shared = findings.find((finding) => finding.eventSeq === event.seq && finding.scope === 'team')
+        const own = findings.find((finding) => finding.eventSeq === event.seq && finding.scope === 'private' && finding.ownerId === userId)
+        return {
+          ...(shared ? { shared: { text: shared.text, sharedBy: shared.sharedBy || undefined } } : {}),
+          ...(own ? { own: { text: own.text } } : {}),
+        }
+      }}
+      isPending={(kind: PendingKind, key: string) => pendingCommand === `${kind}:${key}`}
+      onRun={(actionId) => void send('executeAction', `run:${actionId}`, { actionId })}
+      onRequestApproval={(actionId) => void send('requestApproval', `ask:${actionId}`, { actionId })}
+      onDecide={(actionId, requestSeq, decision) => void send('decideApproval', `${decision}:${actionId}:${requestSeq}`, { actionId, requestSeq, decision })}
+      onShare={(eventSeq) => void send('shareFinding', `share:${eventSeq}`, { eventSeq })}
+      error={error}
+      notice={<ConnectionNotice problem={problem} onRetry={onRetry} />}
+      teamPanel={teamPanel}
+      exits={
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="bg-transparent" onClick={onLeave} data-testid="back-to-rooms">
+            <ArrowLeft aria-hidden /> Back to rooms
           </Button>
         </div>
-      )}
-    </li>
+      }
+    />
   )
 }

@@ -1,14 +1,14 @@
 # Session handoff — resume anchor
 
-**Status:** DeepSpace starter scaffolded and app registered; Operation Nightfall engine (rules version 2) playable solo and as a three-person team with server-enforced roles and commander approvals; server-side timers, lobby expiry, abuse limits and route gates added (D-012); locally tested; nothing deployed or committed.
+**Status:** Operation Nightfall (rules version 2) is playable solo and as a three-person team with a complete designed interface: landing, setup, lobby, command center, evidence, postmortem and history. Backend foundation committed and pushed (17fa068); the interface (Prompt 011, D-013) is in the working tree, tested locally, uncommitted. Never deployed.
 **Updated:** 2026-11-18
 **Current step:** Phase C partially evidenced (C01, C03, C04, C11–C13); Phase A–C gates not formally closed.
 **Current phase gate:** Phase C
-**Last verified repository revision:** 704d027 (planning docs only). Scaffold and tracker edits are uncommitted working-tree changes.
+**Last verified repository revision:** 17fa068 on `main` = `origin/main` (Prompt 010 checkpoint). Prompt 011 interface work and tracker edits are uncommitted working-tree changes on top of it.
 **Live DeepSpace URL:** NONE
-**Current blocker:** None technical. All work since the planning commit awaits the owner's acceptance and commit. `deepspace test run` is broken locally (F-003); use the direct Playwright command in `02_EVIDENCE_LOG.md`.
-**Next action:** Owner accepts or revises D-008 to D-012, then commits (including `wrangler.toml` with its app id). After that: designed interface, end-of-run report, deployed smoke test (rooms, timer and sweep logs).
-**Owner input needed now:** Commit the scaffold; confirm that reviewers signing in with GitHub or Google is acceptable (the SDK does not persist anonymous players).
+**Current blocker:** None technical. D-008 to D-013 await the owner's acceptance. `deepspace test run` is broken locally (F-003); use the direct Playwright command in `02_EVIDENCE_LOG.md`. One API test is flaky by its own race (F-007).
+**Next action:** Owner reviews the screens (run locally, or open the images in `.deepspace/shots/` after `BLACKOUT_SHOTS=1`), accepts or revises D-013, commits. After that: manual accessibility pass (R33), first deploy and deployed smoke test (rooms, timer and sweep logs, R27, R35).
+**Owner input needed now:** Accept or amend D-013 and the two font packages; decide the F-007 test fix; commit the interface; confirm that reviewers signing in with GitHub or Google is acceptable.
 
 ## Checkpoint record — 2026-11-17 (Claude Code, Prompts 001–003)
 - Checkpoint timestamp/timezone: 2026-11-17, about 22:20 US Central
@@ -106,6 +106,48 @@
 - Test accounts: five local DeepSpace test accounts now exist (the fifth, "Blk echo", is used only by the limit tests, which exhaust its allowance for up to an hour); `tests/hardening.spec.ts` skips itself if fewer than five are usable
 - What the assistant can do next without user input: nothing further in this scope
 - What the owner alone must do: accept or amend D-008 to D-012; git add/commit/push; approve any deploy
+
+## Checkpoint record — 2026-11-18, about 15:40 US Central (Claude Code, Prompt 011)
+- Step IDs completed or blocked: J, K worked (interface, responsive layout, accessibility basics); N touched (postmortem, history); none blocked
+- Repo/branch/commit or working-tree revision: `main` at 17fa068 (pushed in Prompt 010), uncommitted working tree
+- Exact paths changed in this pass: see the Prompt 011 checkpoint in `01_PROGRESS.md`
+- Commands and tests actually run: `tsc --noEmit` pass; `eslint .` pass; `vitest run` 275/275; `vite build` pass; Playwright `ui.spec` 7/7; `visual` (opt-in) 3/3; full regression: first run (before `ui.spec.ts` existed) 59 passed, 1 failed (F-007, passed 4 of 4 alone), 7 skipped by design; a second run including `ui.spec.ts` was NOT COMPLETED: it was stopped by the Claude Code harness because the machine was low on memory, before it printed any result; it was not restarted. So the new UI spec and the older specs have each passed, but not together in one run. Eight-minute and restart tests not rerun
+- URLs/screenshots/logs/evidence refs: `02_EVIDENCE_LOG.md` 15:40 rows; screenshots in `.deepspace/shots/` (git-ignored; regenerate with `BLACKOUT_SHOTS=1 npx playwright test visual ...`)
+- SDK versions/API assumptions verified: `deepspace` 0.44.2 unchanged. Only hooks already in use (`useQuery`, `useAuth`, `useAuthProfileReady`, `usePresenceRoom`, `useUsers`, `AuthOverlay`, `signOut`); no new server call
+- Decisions taken and approvals received: D-013 proposed, not yet accepted. Added `@fontsource-variable/inter` and `@fontsource-variable/public-sans` (free, self-hosted)
+- Stable test hooks: every `data-testid` the earlier specs use is kept. New ones: `landing-*`, `home-*`, `signed-out-panel`, `gate-sign-in`, `history-*`, `copy-code`, `copy-status`, `readiness`, `abandon-confirm`, `abandon-cancel`, `severity`, `clock-label`, `live-announcement`, `action-requires-<id>`, `open-evidence-<seq>`, `evidence-*`, `outcome-summary`, `end-reason`, `score-breakdown`, `score-part-<key>`, `score-total`, `outcome-criteria`, `consequences`, `no-costs`, `run-result`, `run-again`, `back-to-runs`, `back-to-rooms`
+- Not built, by design: no generated advice in the postmortem; no replay of a finished run (a new simulation is offered instead); no leaderboard or statistics; no light theme
+- Critical risks unresolved: R06, R17, R19, R22, R26–R36; F-003 and F-007 open
+- What the assistant can do next without user input: nothing further in this batch
+- What the owner alone must do: accept or amend D-008 to D-013; git add/commit/push; approve any deploy
+
+## Prompt 011B — visual redesign (2026-11-18, uncommitted)
+- Scope: presentation only. Landing, command center, lobby and setup, evidence record, postmortem, home, history and settings were recomposed as a ruled, monochrome editorial layout. No file under `src/game`, `src/server`, `src/actions` or `worker.ts` changed in 011 or 011B.
+- Reference: `design/blackout-reference.png` holds one command-center screen, not several screens; the other screens were designed to match its language.
+- Checks actually run: `tsc --noEmit` exit 0; `eslint .` exit 0; `vite build` exit 0; Vitest 274/275 at the default timeout and 275/275 with `--testTimeout=30000` (F-008); Playwright `ui.spec` + `team-ui.spec` 8/8 with one worker; `ui.spec` + `team-ui.spec` + `simulation.spec` + `smoke.spec` 32 passed, 1 failed, 1 skipped with two workers, the failure being a history-row lookup by position in `tests/ui.spec.ts`, since changed to look the run up by its id (`data-run-id`) and passing. `team.spec`, `hardening.spec` and `collab.spec` were not rerun in 011B.
+- Screenshots: `.deepspace/shots/`, 19 screens at 1440, 820 and 390 px. Desktop images of the solo run and postmortem predate the last phone-only fixes (status strip stacking below 640 px; landing captions hidden below 1024 px).
+- Open: F-003, F-007, F-008. Owner alone: accept or amend D-008 to D-013, review the redesign, commit, push, deploy.
+
+## Checkpoint record — 2026-11-18, about 17:50 US Central (Claude Code, Prompt 012)
+- Step IDs completed or blocked: final QA and release-readiness review. Nothing deployed.
+- Repo/branch/commit: `main`, HEAD 17fa068 = `origin/main`; Prompts 011, 011B and 012 are uncommitted in the working tree.
+- Paths changed in 012: `src/components/game/CommandCenter.tsx`, `src/pages/(app)/(protected)/team.tsx`, `src/pages/index.tsx` (one colour class), `src/styles.css` (one token), `src/game/engine.test.ts` (one per-test timeout), `tests/team.spec.ts` (F-007), `tests/ui.spec.ts`, `tests/visual.spec.ts`, `tests/endings.spec.ts` (new), and flow docs 01, 02, 03, 08, 10, 14, 16.
+- Not changed: `src/game/engine.ts`, `src/game/lobby.ts`, everything under `src/server` and `src/actions`, `worker.ts`, schemas, `wrangler.toml`.
+- Commands and tests actually run: type-check, lint, build exit 0; Vitest 275 of 275 at default settings; browser batches with one worker: `ui.spec` + `team-ui.spec`: 8 passed; `team.spec`: 13 passed; `team.spec -g "simultaneous, conflicting" --repeat-each=8`: 8 passed; `simulation.spec` + `smoke.spec` + `api.spec` + `collab.spec`: 30 passed, 1 skipped (eight-minute test, opt-in); `hardening.spec`: 16 passed, 3 skipped (eight-minute test and the two restart phases, opt-in); `BLACKOUT_ENDINGS=1 endings.spec`: 1 passed (8.3 min); one complete run: PASS: 70 passed, 0 failed, 5 skipped in 20.8 min (skipped by design: `endings.spec`, run separately above; the two older eight-minute tests; the two restart phases). This is the first complete run of every spec file together, including `ui.spec` and the screenshot tests.
+- Not run in 012: the two older eight-minute tests (`BLACKOUT_SLOW=1`) and the two restart phases (`BLACKOUT_RESTART`); their code paths (`timer.ts`, `commands.ts`) are unchanged since they last passed, and `endings.spec` exercised the deadline for three unattended simulations.
+- Screenshots: `.deepspace/shots/`, 113 files, 21 screens at 1440, 820, 390 px.
+- F-007 and F-008: closed, see `02_EVIDENCE_LOG.md`.
+- Decisions: D-014 proposed. D-008 to D-014 await the owner.
+- Release assessment: locally ready; the first deploy is the owner's step. Before it: decide the source of record (R02), accept the proposed decisions, commit. After it: deployed smoke test and one three-person room (R37), then a screen-reader and second-browser pass (R33).
+- What the assistant can do next without user input: nothing further in this batch.
+- What the owner alone must do: the decisions above; `git add`/commit/push; `deepspace deploy`.
+
+## Checkpoint record — 2026-11-18, about 18:40 US Central (Claude Code, Prompt 013)
+- Step: release checkpoint. One milestone commit on top of 17fa068 holds Prompts 011, 011B and 012 and this documentation; its SHA is in `git log` and in the Prompt 013 report. Pushed to `origin/main` by explicit instruction. Nothing deployed.
+- Decisions: D-008 to D-015 audited in `03_DECISIONS.md` ("Decision audit"); all remain proposed. D-015 records the 011B redesign that D-013 no longer described.
+- Checks at the checkpoint: type-check, lint, build exit 0; unit 275 of 275; the complete browser run of 17:50 (70 passed, 0 failed, 5 skipped) still describes this code.
+- First deploy, in order, owner only: (1) accept or amend D-008 to D-015 and decide R40; (2) `npx deepspace auth whoami` as the owning account; (3) `npx deepspace status --json` and confirm `sourceInference: github` is what is wanted, because the deploy claims GitHub permanently (R02); (4) `npx deepspace secrets configs create prd` (R41); (5) `npx deepspace deploy` from a clean `main`; (6) confirm `serving: confirmed`, then `npx deepspace releases`, `npx deepspace logs --follow --json`, open `https://blackout.app.space`, run the smoke flow and one three-person room (R37). Never run `deepspace push` before that first deploy.
+- Open: F-003; R22, R27, R33, R36 to R41.
 
 ## Checkpoint record — replace after each actual slice
 - Checkpoint timestamp/timezone:

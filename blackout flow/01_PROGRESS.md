@@ -119,14 +119,49 @@
 - **Owner decision required?:** Yes — accept or amend D-008 to D-012 (including the limit values and retention periods); commit.
 - **Next step:** Owner review; then the designed interface and the end-of-run report, and a deployed smoke test including the timer and sweep logs.
 
+## Checkpoint — 2026-11-18, about 15:40 US Central (Claude Code, Prompt 011: complete frontend and visual implementation)
+
+- **Step ID:** J and K (interface, responsiveness, accessibility) worked; N (postmortem and history) touched. Phase gates are not formally closed; the phase table is unchanged.
+- **Status:** IMPLEMENTED and TESTED locally (local worker, Chromium, three viewport widths). Not deployed, not committed. Recorded as D-013, awaiting owner acceptance.
+- **What changed:** every screen redesigned on one dark token set with self-hosted Inter and Public Sans: landing page, home, sign-in gate, solo setup, team setup and lobby (copy code, role slots, host badge, presence, readiness, two-step close), the command center shared by solo and team play (header, server countdown, SEV-1, four metrics, approvals, actions with prerequisites, duration and approval state, timeline with metric effects, findings with private and shared marking, evidence dialog, team panel), the postmortem (outcome, score and its parts, outcome conditions, costly events, full record), a new History page, settings and 404. No simulation rule, permission, server action or schema changed.
+- **Files changed:** new `src/components/Brand.tsx`, `PageHeader.tsx`, `src/components/game/CommandCenter.tsx`, `Postmortem.tsx`, `RunLists.tsx`, `model.ts`, `rows.ts`, `src/pages/(app)/(protected)/history.tsx`, `tests/ui.spec.ts`, `tests/visual.spec.ts`; changed `index.html`, `package.json`, `pnpm-lock.yaml` (two font packages), `src/styles.css`, `themes.css`, `themes.ts`, `constants.ts`, `nav.ts`, `seo.ts`, `src/components/ConnectionNotice.tsx`, `Navigation.tsx`, `src/pages/index.tsx`, `[...all].tsx`, `(app)/_layout.tsx`, `(app)/home.tsx`, `(app)/(protected)/_layout.tsx`, `settings.tsx`, `simulation.tsx`, `team.tsx`; flow documents 01, 02, 03, 08, 10, 14, 16. `design/blackout-reference.png` is the owner's file, untracked, not modified.
+- **Commands/tests run (exact):** see the 2026-11-18 15:40 rows in `02_EVIDENCE_LOG.md`.
+- **Results and artifacts:** `tsc`, `eslint`, `vite build` exit 0; unit: PASS: 7 files, 275 tests; new UI spec: 7 of 7; screenshots: 3 of 3 (opt-in), 18 screens at three widths inspected; full browser regression: first run (before `ui.spec.ts` existed) 59 passed, 1 failed (F-007, passed 4 of 4 alone), 7 skipped by design; a second run including `ui.spec.ts` was NOT COMPLETED: it was stopped by the Claude Code harness because the machine was low on memory, before it printed any result; it was not restarted. So the new UI spec and the older specs have each passed, but not together in one run. The eight-minute and restart tests were not rerun (timing code unchanged).
+- **Failure/uncertainty:** one existing API test failed once in the first full run by its own race and passed 4 of 4 alone (F-007, R34); it was not edited. Three visual defects found in screenshots and fixed. Accessibility checked by automated assertions only (R33). Chromium only (R36).
+- **Owner decision required?:** Yes — accept or amend D-013 (and D-008 to D-012, still open); decide the F-007 test fix; commit.
+- **Next step:** Owner review of the screens; manual accessibility pass; then the first deploy and the deployed smoke test.
+
+## Checkpoint — 2026-11-18 17:50 (Claude Code, Prompt 012)
+
+- **Step ID:** N (polish and accessibility), M (regression), L/O (release gate review); phase table unchanged because the gates are the owner's to close.
+- **Status:** Final QA done locally. Nothing committed, pushed or deployed.
+- **What changed:** interface corrections D-014 (pinned line, actions before timeline on a phone, expandable full record in the postmortem, clearer action labels, lobby readiness and host, evidence record order, contrast on red); F-007 fixed in its test; F-008 given a per-test timeout; a real-time test of all four endings added.
+- **Files changed:** see `14_SESSION_HANDOFF.md`, Prompt 012 record. No engine, server, action or schema file changed.
+- **Commands/tests run (exact):** see `02_EVIDENCE_LOG.md`, rows dated 2026-11-18 17:50.
+- **Results and artifacts:** type-check, lint, build exit 0; unit 275 of 275; browser batches all passed; complete run: PASS: 70 passed, 0 failed, 5 skipped in 20.8 min (skipped by design: `endings.spec`, run separately above; the two older eight-minute tests; the two restart phases). This is the first complete run of every spec file together, including `ui.spec` and the screenshot tests. Screenshots: 113 files in `.deepspace/shots/`.
+- **Failure/uncertainty:** one accessibility defect found and fixed (white on red, 3.91:1). No screen reader and no second browser (R33). Nothing verified on a deployed worker (R37).
+- **Owner decision required?:** Yes: D-008 to D-014; source of record before the first deploy (R02); commit; deploy.
+- **Next step:** owner review, commit and first deploy; then the deployed smoke test and a three-person room.
+
+## Checkpoint — 2026-11-18 18:40 (Claude Code, Prompt 013)
+
+- **Step ID:** O (release checkpoint before the first deploy).
+- **Status:** Milestone commit created and pushed to `origin/main` by explicit instruction. Nothing deployed; source of record not claimed.
+- **What changed:** documentation only in this prompt: decision audit and D-015 in `03_DECISIONS.md`; R35 closed, R40 and R41 added; evidence and handoff updated.
+- **Commands/tests run (exact):** see `02_EVIDENCE_LOG.md`, rows dated 2026-11-18 18:40.
+- **Results and artifacts:** type-check, lint, build exit 0; unit 275 of 275; browser evidence unchanged from 17:50.
+- **Failure/uncertainty:** deploy would currently be refused for a missing `prd` secrets config (R41); server-only scenario text is public in the repository (R40); nothing verified on a deployed worker (R37).
+- **Owner decision required?:** Yes: D-008 to D-015, R40, the source claim (R02), then the deploy itself.
+- **Next step:** owner runs the first-deploy sequence in `14_SESSION_HANDOFF.md`.
+
 ## Release status
 
-- GitHub repository: EXISTS (github.com/AhuoyizaEnesi/blackout, public), EMPTY — nothing pushed yet
-- Git author/co-author inspection: commit 704d027 authored by Peace Enesi, no co-author trailer; scaffold files are uncommitted
+- GitHub repository: EXISTS (github.com/AhuoyizaEnesi/blackout, public); Prompts 011, 011B and 012 committed as one milestone commit on top of 17fa068 and pushed on 2026-11-18 (Prompt 013)
+- Git author/co-author inspection: commits 704d027 and 17fa068 authored by Peace Enesi, no co-author trailer
 - DeepSpace account and usage: VERIFIED 2026-11-17 — free tier, 500 credits, 0 used
-- DeepSpace app: REGISTERED 2026-11-17 — `app_01M7PE4DPM9P0NYXQG430BJT9A`, name `blackout`, production plane, never deployed, source unclaimed (next deploy would claim GitHub)
+- DeepSpace app: REGISTERED 2026-11-17 — `app_01M7PE4DPM9P0NYXQG430BJT9A`, name `blackout`, production plane, never deployed, source unclaimed (next deploy would claim GitHub); 2026-11-18 18:40: still never deployed, `sourceInference: github`, no secrets config yet (R41)
 - SDK/scaffold/version: `deepspace` 0.44.2 starter template, pnpm 10.30.2, Node 22.20.0
 - Live deployed URL: NONE
-- Local suite status (2026-11-18 13:20): type-check, lint, build PASS; unit: PASS: 7 files, 275 tests, 0 failed (235 existing, 40 new in `hardening.test.ts`); Playwright against the local worker, run with `npx playwright test` because `deepspace test run` fails on this machine (F-003): PASS: 60 passed, 4 skipped (the two eight-minute tests and the two restart phases, all opt-in), 0 failed, exit 0 (5.3 min). Opt-in runs the same day: restart recovery PASS: phase a 1 passed (21 s), server stopped (port closed), phase b 1 passed (58 s); unattended eight-minute deadline: PASS: 1 passed, 0 failed, exit 0 (8.4 min): with no action sent for eight minutes, the solo and the team log each held all nine scheduled events at their exact times, the room row read completed, and both results gave the deadline as the reason; the sweep that ran meanwhile reported completed 0, so the timer job did it
+- Local suite status (2026-11-18 17:50, Prompt 012): type-check, lint, build PASS; unit: PASS: 7 files, 275 tests; Playwright against the local worker by the direct command (F-003), one worker: every batch passed; complete run: PASS: 70 passed, 0 failed, 5 skipped in 20.8 min (skipped by design: `endings.spec`, run separately above; the two older eight-minute tests; the two restart phases). This is the first complete run of every spec file together, including `ui.spec` and the screenshot tests.
 - Production smoke test: NOT RUN
 - Submission confirmation: NONE
