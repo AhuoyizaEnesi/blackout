@@ -154,14 +154,25 @@
 - **Owner decision required?:** Yes: D-008 to D-015, R40, the source claim (R02), then the deploy itself.
 - **Next step:** owner runs the first-deploy sequence in `14_SESSION_HANDOFF.md`.
 
+## Checkpoint — 2026-11-18 22:00 (Claude Code, Prompt 014)
+
+- **Step ID:** O (first deployment and production verification).
+- **Status:** DEPLOYED. https://blackout.app.space, release 2 `rel_01M7RXA54FCJCWB3ENRKE9E610`, commit a1d5b32. GitHub claimed as permanent source with owner authorization.
+- **What changed:** `prd` secrets config created (empty); two deploys; one fix (F-009, evidence dialog focus) with a production test config and a screenshot-folder option; decisions accepted; documents updated.
+- **Commands/tests run (exact):** see `02_EVIDENCE_LOG.md`, rows dated 2026-11-18 22:00.
+- **Results and artifacts:** production: smoke+api 8/8; UI and team page 8/8; API and team suites 31 passed, 2 skipped; hardening 11/11 including the unattended eight-minute deadline; sweep observed twice; logs clean. Endings rerun: PASS 1 of 1 (8.3 min): all four endings reached on the production server in their score bands; deadline endings stamped at the stored deadline; postmortem pages and history agree
+- **Failure/uncertainty:** not verified in production: abuse limits, lobby expiry and deletion, restart recovery, a real account sign-in (R42).
+- **Owner decision required?:** Whether and when to share the URL.
+- **Next step:** owner signs in once with a real account and plays a run; then decides on sharing.
+
 ## Release status
 
-- GitHub repository: EXISTS (github.com/AhuoyizaEnesi/blackout, public); Prompts 011, 011B and 012 committed as one milestone commit on top of 17fa068 and pushed on 2026-11-18 (Prompt 013)
+- GitHub repository: EXISTS (github.com/AhuoyizaEnesi/blackout, public); permanent DeepSpace source of record since 2026-11-18
 - Git author/co-author inspection: commits 704d027 and 17fa068 authored by Peace Enesi, no co-author trailer
 - DeepSpace account and usage: VERIFIED 2026-11-17 — free tier, 500 credits, 0 used
-- DeepSpace app: REGISTERED 2026-11-17 — `app_01M7PE4DPM9P0NYXQG430BJT9A`, name `blackout`, production plane, never deployed, source unclaimed (next deploy would claim GitHub); 2026-11-18 18:40: still never deployed, `sourceInference: github`, no secrets config yet (R41)
+- DeepSpace app: DEPLOYED 2026-11-18 — `app_01M7PE4DPM9P0NYXQG430BJT9A`, https://blackout.app.space, release 2 `rel_01M7RXA54FCJCWB3ENRKE9E610` (commit a1d5b32); source GitHub, claimed; `prd` secrets config empty
 - SDK/scaffold/version: `deepspace` 0.44.2 starter template, pnpm 10.30.2, Node 22.20.0
 - Live deployed URL: NONE
 - Local suite status (2026-11-18 17:50, Prompt 012): type-check, lint, build PASS; unit: PASS: 7 files, 275 tests; Playwright against the local worker by the direct command (F-003), one worker: every batch passed; complete run: PASS: 70 passed, 0 failed, 5 skipped in 20.8 min (skipped by design: `endings.spec`, run separately above; the two older eight-minute tests; the two restart phases). This is the first complete run of every spec file together, including `ui.spec` and the screenshot tests.
-- Production smoke test: NOT RUN
+- Production smoke test: PASS 2026-11-18 (8 of 8 on the live URL; fuller production runs in `02_EVIDENCE_LOG.md`)
 - Submission confirmation: NONE

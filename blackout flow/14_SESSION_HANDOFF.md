@@ -149,6 +149,14 @@
 - First deploy, in order, owner only: (1) accept or amend D-008 to D-015 and decide R40; (2) `npx deepspace auth whoami` as the owning account; (3) `npx deepspace status --json` and confirm `sourceInference: github` is what is wanted, because the deploy claims GitHub permanently (R02); (4) `npx deepspace secrets configs create prd` (R41); (5) `npx deepspace deploy` from a clean `main`; (6) confirm `serving: confirmed`, then `npx deepspace releases`, `npx deepspace logs --follow --json`, open `https://blackout.app.space`, run the smoke flow and one three-person room (R37). Never run `deepspace push` before that first deploy.
 - Open: F-003; R22, R27, R33, R36 to R41.
 
+## Checkpoint record — 2026-11-18, about 22:00 US Central (Claude Code, Prompt 014)
+- Step: first production deployment and verification. Live at https://blackout.app.space. Release 1 `rel_01M7RWT5WBS88YTPJ38XYA68TA` from 297daec; release 2 `rel_01M7RXA54FCJCWB3ENRKE9E610` from a1d5b32 (focus fix F-009). Current production = release 2 = a1d5b32 plus nothing else; later commits on `main` are documentation only.
+- Source of record: GitHub `ahuoyizaenesi/blackout`, permanent. Never run `deepspace push`. To release: commit, push, then `npx deepspace deploy` from a clean `main`.
+- Decisions D-008 to D-016 accepted by the owner.
+- Production tests: `tests/prod.playwright.config.ts` points the specs at the live URL. Run one process at a time; never aim `hardening.spec` "abuse limits", "room lifecycle" or "server restart" at production.
+- Not verified in production: abuse limits, lobby expiry/deletion by the sweep, restart recovery, a real account through the hosted sign-in page (R42), screen reader and other browsers (R33).
+- The URL has not been shared with anyone and nothing was submitted.
+
 ## Checkpoint record — replace after each actual slice
 - Checkpoint timestamp/timezone:
 - Step IDs completed or blocked:
