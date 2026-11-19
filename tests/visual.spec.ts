@@ -13,7 +13,8 @@ import { test, expect, loadAllTestAccounts } from 'deepspace/testing'
 test.skip(!process.env.BLACKOUT_SHOTS, 'Set BLACKOUT_SHOTS=1 to capture screenshots.')
 test.skip(loadAllTestAccounts().length < 3, 'Needs 3 test accounts.')
 
-const OUT = fileURLToPath(new URL('../.deepspace/shots/', import.meta.url))
+// BLACKOUT_SHOT_DIR (a folder name under .deepspace) keeps production captures apart from local ones.
+const OUT = fileURLToPath(new URL(`../.deepspace/${process.env.BLACKOUT_SHOT_DIR ?? 'shots'}/`, import.meta.url))
 // BLACKOUT_SHOT_SIZES=desktop (or a comma list) limits the widths captured.
 const WANTED = (process.env.BLACKOUT_SHOT_SIZES ?? 'desktop,tablet,phone').split(',')
 const VIEWPORTS = [

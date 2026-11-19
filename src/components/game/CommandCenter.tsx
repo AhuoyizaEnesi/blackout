@@ -862,8 +862,26 @@ function EvidenceDialog({
   // One statement per line, as a log extract reads. The text itself is untouched.
   const lines = text ? (text.match(/[^.!?]+[.!?]+(?=\s|$)|[^.!?]+$/g) ?? [text]).map((line) => line.trim()).filter(Boolean) : []
 
+  // While the record is open the page behind it takes no focus at all: the dialog is rendered outside the app
+  // root, so the root can be made inert. Without this, Tab from a record with a single control could land on a
+  // link behind the dialog.
+  const isOpen = !!entry
+  useEffect(() => {
+    if (!isOpen) return
+    const root = document.getElementById('root')
+    root?.setAttribute('inert', '')
+    return () => {
+      root?.removeAttribute('inert')
+    }
+  }, [isOpen])
+  const close = () => {
+    // Before the dialog hands focus back to the control that opened it, that control must be focusable again.
+    document.getElementById('root')?.removeAttribute('inert')
+    onClose()
+  }
+
   return (
-    <Dialog open={!!entry} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && close()}>
       <DialogContent className="gap-0 p-0 sm:max-w-2xl sm:p-0" data-testid="evidence-dialog">
         {shown && (
           <>
